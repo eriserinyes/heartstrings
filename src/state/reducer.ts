@@ -1,3 +1,4 @@
+import { DEFAULT_TYPES, V1_TYPE_IDS } from '../model/defaults';
 import type { Id, Person, Relationship, RelationshipType, Vault } from '../model/types';
 
 export type Action =
@@ -36,10 +37,13 @@ export function vaultReducer(v: Vault, a: Action): Vault {
         relationships: v.relationships.filter((r) => r.from !== a.id && r.to !== a.id),
       };
     case 'addRelationships': {
-      // Ignore exact duplicates (same from/to/type) — edit the existing one instead.
-      const fresh = a.rels.filter(
-        (n) => !v.relationships.some((r) => r.from === n.from && r.to === n.to && r.typeId === n.typeId),
-      );
+      // Ignore exact duplicates (same from/to/type/layer) — edit the existing one instead.
+      const same = (r: Relationship, n: Relationship) =>
+        r.from === n.from && r.to === n.to && r.typeId === n.typeId && !!r.speculative === !!n.speculative;
+      const fresh: Relationship[] = [];
+      for (const n of a.rels) {
+        if (!v.relationships.some((r) => same(r, n)) && !fresh.some((r) => same(r, n))) fresh.push(n);
+      }
       return { ...v, relationships: [...v.relationships, ...fresh] };
     }
     case 'updateRelationship':
@@ -66,6 +70,30 @@ export function vaultReducer(v: Vault, a: Action): Vault {
   }
 }
 
+/** Where a newly-introduced built-in should slot into an existing type list. */
+const PLACEMENT: Record<Id, { after?: Id; before?: Id }> = {
+  acquaintance: { after: 'friend' },
+  primary: { before: 'romantic' },
+};
+
+/**
+ * Add built-in types the vault has never been offered (e.g. ones shipped
+ * after it was created), and backfill fields added since. Built-ins the user
+ * deleted stay deleted, because they're already in seededTypeIds.
+ */
+function seedNewBuiltIns(rawTypes: RelationshipType[], seeded: Id[] = V1_TYPE_IDS) {
+  const byId = new Map(DEFAULT_TYPES.map((t) => [t.id, t]));
+  const types = rawTypes.map((t) => ({ ...t, emphasis: t.emphasis ?? byId.get(t.id)?.emphasis ?? 'normal' }));
+  for (const d of DEFAULT_TYPES) {
+    if (seeded.includes(d.id) || types.some((t) => t.id === d.id)) continue;
+    const place = PLACEMENT[d.id] ?? {};
+    const anchor = types.findIndex((t) => t.id === (place.after ?? place.before));
+    const at = anchor < 0 ? types.length : place.after ? anchor + 1 : anchor;
+    types.splice(at, 0, { ...d });
+  }
+  return { types, seededTypeIds: [...new Set([...seeded, ...DEFAULT_TYPES.map((t) => t.id)])] };
+}
+
 /** Light validation for imported/decrypted vaults so a bad file can't crash the UI. */
 export function normaliseVault(raw: unknown): Vault {
   const v = raw as Partial<Vault>;
@@ -75,9 +103,9 @@ export function normaliseVault(raw: unknown): Vault {
   return {
     version: 1,
     people: v.people.map((p: Partial<Person>) => ({ emoji: '🙂', color: '#ffc6ff', notes: '', isMe: false, ...p }) as Person),
-    types: v.types,
+    ...seedNewBuiltIns(v.types, v.seededTypeIds),
     relationships: v.relationships.map(
-      (r: Partial<Relationship>) => ({ intensity: 3, notes: '', since: '', createdAt: Date.now(), ...r }) as Relationship,
+      (r: Partial<Relationship>) => ({ intensity: 3, notes: '', since: '', createdAt: Date.now(), speculative: false, ...r }) as Relationship,
     ),
   };
 }

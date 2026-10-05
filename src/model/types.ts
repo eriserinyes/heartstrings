@@ -18,6 +18,9 @@ export interface Person {
   pin?: { x: number; y: number; z?: number };
 }
 
+/** How loudly a type draws on the map. */
+export type Emphasis = 'subtle' | 'normal' | 'bold';
+
 export interface RelationshipType {
   id: Id;
   label: string;
@@ -25,6 +28,8 @@ export interface RelationshipType {
   color: string;
   /** Dashed lines read as "softer"/unspoken — used for crushes by default. */
   dashed: boolean;
+  /** bold = thick glowing line with a heart badge; subtle = thin and faint. */
+  emphasis: Emphasis;
   builtIn: boolean;
 }
 
@@ -44,6 +49,12 @@ export interface Relationship {
   /** ISO date (yyyy-mm-dd), optional. */
   since: string;
   createdAt: number;
+  /**
+   * Lives on the "speculative" layer: what-ifs and maybes. Real and speculative
+   * connections are fully independent; the whole layer can be hidden as if it
+   * didn't exist.
+   */
+  speculative: boolean;
 }
 
 export interface Vault {
@@ -51,4 +62,9 @@ export interface Vault {
   people: Person[];
   types: RelationshipType[];
   relationships: Relationship[];
+  /**
+   * Built-in type ids this vault has already been offered. Lets new built-ins
+   * appear in old vaults without resurrecting ones the user deleted.
+   */
+  seededTypeIds?: Id[];
 }

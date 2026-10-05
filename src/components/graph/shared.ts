@@ -74,9 +74,50 @@ export function linkTooltip(l: GraphLink, nameOf: (id: Id) => string): string {
   const s = nameOf(endId(l.source));
   const t = nameOf(endId(l.target));
   const arrow = l.mutual ? '⇄' : '→';
-  return `<div class="tip"><b>${l.type.emoji} ${l.type.label}</b><br/>${escapeHtml(s)} ${arrow} ${escapeHtml(t)}</div>`;
+  const spec = l.speculative ? '<div class="tip-spec">🔮 speculative</div>' : '';
+  return `<div class="tip">${spec}<b>${l.type.emoji} ${l.type.label}</b><br/>${escapeHtml(s)} ${arrow} ${escapeHtml(t)}</div>`;
 }
 
 export function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+}
+
+type XY = { x: number; y: number };
+
+/**
+ * Quadratic control point for a 2D curved link — mirrors force-graph's own
+ * formula so our decorations sit exactly on the drawn line. Null = straight.
+ */
+export function controlPoint2D(s: XY, t: XY, curvature: number): XY | null {
+  if (!curvature) return null;
+  const l = Math.hypot(t.x - s.x, t.y - s.y);
+  if (!l) return null;
+  const a = Math.atan2(t.y - s.y, t.x - s.x);
+  const d = l * curvature;
+  return { x: (s.x + t.x) / 2 + d * Math.cos(a - Math.PI / 2), y: (s.y + t.y) / 2 + d * Math.sin(a - Math.PI / 2) };
+}
+
+/** Midpoint of a (possibly curved) 2D link. */
+export function linkMidpoint2D(s: XY, t: XY, curvature: number): XY {
+  const cp = controlPoint2D(s, t, curvature);
+  if (!cp) return { x: (s.x + t.x) / 2, y: (s.y + t.y) / 2 };
+  return { x: 0.25 * s.x + 0.5 * cp.x + 0.25 * t.x, y: 0.25 * s.y + 0.5 * cp.y + 0.25 * t.y };
+}
+
+/** Base line opacity: speculative links are ghostly, subtle types faint. */
+export function linkAlpha(l: GraphLink, highlighted: boolean): number {
+  if (!highlighted) return l.type.emphasis === 'bold' ? 0.22 : 0.1;
+  const base = l.type.emphasis === 'subtle' ? 0.5 : l.type.emphasis === 'bold' ? 1 : 0.9;
+  return l.speculative ? base * 0.7 : base;
+}
+
+export function linkParticles(l: GraphLink): number {
+  if (l.mutual || l.type.emphasis === 'subtle') return 0;
+  if (l.speculative) return 1;
+  return l.type.emphasis === 'bold' ? 3 : 2;
+}
+
+export function linkDistance(l: GraphLink): number {
+  const base = l.type.emphasis === 'bold' ? 65 : l.type.emphasis === 'subtle' ? 150 : 100;
+  return l.mutual ? base * 0.85 : base;
 }

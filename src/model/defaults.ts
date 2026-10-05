@@ -1,19 +1,27 @@
 import type { RelationshipType, Vault } from './types';
 
 export const DEFAULT_TYPES: RelationshipType[] = [
-  { id: 'friend', label: 'Friendship', emoji: '🌼', color: '#3fbfa8', dashed: false, builtIn: true },
-  { id: 'crush', label: 'Crush', emoji: '💘', color: '#ff7eb6', dashed: true, builtIn: true },
-  { id: 'romantic', label: 'Romantic', emoji: '💞', color: '#ff4f6d', dashed: false, builtIn: true },
-  { id: 'play', label: 'Play partner', emoji: '🔥', color: '#9a6bff', dashed: false, builtIn: true },
-  { id: 'qpr', label: 'Queerplatonic', emoji: '🌈', color: '#ffa94d', dashed: false, builtIn: true },
+  { id: 'friend', label: 'Friendship', emoji: '🌼', color: '#3fbfa8', dashed: false, emphasis: 'normal', builtIn: true },
+  { id: 'acquaintance', label: 'Acquaintance', emoji: '👋', color: '#a29bc4', dashed: false, emphasis: 'subtle', builtIn: true },
+  { id: 'crush', label: 'Crush', emoji: '💘', color: '#ff7eb6', dashed: true, emphasis: 'normal', builtIn: true },
+  { id: 'primary', label: 'Primary partner', emoji: '💖', color: '#ff1f8f', dashed: false, emphasis: 'bold', builtIn: true },
+  { id: 'romantic', label: 'Romantic', emoji: '💞', color: '#ff4f6d', dashed: false, emphasis: 'normal', builtIn: true },
+  { id: 'play', label: 'Play partner', emoji: '🔥', color: '#9a6bff', dashed: false, emphasis: 'normal', builtIn: true },
+  { id: 'qpr', label: 'Queerplatonic', emoji: '🌈', color: '#ffa94d', dashed: false, emphasis: 'normal', builtIn: true },
 ];
+
+/** The built-ins that shipped in v1, before seededTypeIds existed. */
+export const V1_TYPE_IDS = ['friend', 'crush', 'romantic', 'play', 'qpr'];
+
+/** Types counted as "partners" for metamour detection. */
+export const PARTNER_TYPE_IDS = new Set(['primary', 'romantic', 'play', 'qpr']);
 
 export const PERSON_EMOJI = [
   '🦊', '🐰', '🐸', '🐱', '🐻', '🦄', '🐙', '🦋', '🐝', '🐧', '🦉', '🐢',
   '🌸', '🌻', '🍄', '🌙', '⭐', '🍓', '🍑', '🧁', '🎀', '🪐', '🌊', '🔮',
 ];
 
-export const TYPE_EMOJI = ['🌼', '💘', '💞', '🔥', '🌈', '💜', '🤝', '🫶', '✨', '🏡', '🎲', '🧸', '⛓️', '🌶️', '💍', '🌱'];
+export const TYPE_EMOJI = ['💖', '👋', '🌼', '💘', '💞', '🔥', '🌈', '💜', '🤝', '🫶', '✨', '🏡', '🎲', '🧸', '⛓️', '🌶️', '💍', '🌱'];
 
 export const TYPE_COLORS = [
   '#3fbfa8', '#ff7eb6', '#ff4f6d', '#9a6bff', '#ffa94d',
@@ -32,7 +40,13 @@ export function pick<T>(xs: readonly T[]): T {
 }
 
 export function emptyVault(): Vault {
-  return { version: 1, people: [], types: DEFAULT_TYPES.map((t) => ({ ...t })), relationships: [] };
+  return {
+    version: 1,
+    people: [],
+    types: DEFAULT_TYPES.map((t) => ({ ...t })),
+    relationships: [],
+    seededTypeIds: DEFAULT_TYPES.map((t) => t.id),
+  };
 }
 
 export function newId(): string {

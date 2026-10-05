@@ -2,7 +2,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ForceGraph2D, { type ForceGraphMethods } from 'react-force-graph-2d';
 import type { GraphLink, GraphNode } from '../../model/graph';
 import type { Id } from '../../model/types';
-import { highlightSets, linkTooltip, nodeRadius, nodeVal, REL_SIZE, withAlpha, type GraphRenderProps } from './shared';
+import {
+  controlPoint2D,
+  highlightSets,
+  linkAlpha,
+  linkDistance,
+  linkMidpoint2D,
+  linkParticles,
+  linkTooltip,
+  nodeRadius,
+  nodeVal,
+  REL_SIZE,
+  withAlpha,
+  type GraphRenderProps,
+} from './shared';
 
 const FONT = '"Nunito", ui-rounded, system-ui, sans-serif';
 
@@ -36,7 +49,7 @@ export default function Graph2D(props: GraphRenderProps) {
   useEffect(() => {
     // Gentler forces than the default: friend groups need room to breathe.
     fg.current?.d3Force('charge')?.strength(-300);
-    fg.current?.d3Force('link')?.distance((l: GraphLink) => (l.mutual ? 90 : 115));
+    fg.current?.d3Force('link')?.distance(linkDistance);
   }, []);
 
   useEffect(() => {
@@ -115,6 +128,59 @@ export default function Graph2D(props: GraphRenderProps) {
     [hl, selectedId, selectedPair, labels, dark],
   );
 
+  // Bold types (primary partner) get a soft glow drawn underneath the line…
+  const drawGlow = useCallback(
+    (l: GraphLink, ctx: CanvasRenderingContext2D) => {
+      const s = l.source as GraphNode;
+      const t = l.target as GraphNode;
+      if (s.x === undefined || t.x === undefined) return;
+      const on = !hl || hl.links.has(l.id);
+      const cp = controlPoint2D({ x: s.x, y: s.y! }, { x: t.x, y: t.y! }, l.curvature);
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(s.x, s.y!);
+      if (cp) ctx.quadraticCurveTo(cp.x, cp.y, t.x, t.y!);
+      else ctx.lineTo(t.x, t.y!);
+      ctx.lineCap = 'round';
+      ctx.lineWidth = l.width + 9;
+      ctx.strokeStyle = withAlpha(l.type.color, (on ? 0.28 : 0.06) * (l.speculative ? 0.5 : 1));
+      ctx.shadowColor = l.type.color;
+      ctx.shadowBlur = on ? 14 : 0;
+      ctx.stroke();
+      ctx.restore();
+    },
+    [hl],
+  );
+
+  // …and a heart badge at the midpoint, drawn after everything else so it's never hidden.
+  const drawBadges = useCallback(
+    (ctx: CanvasRenderingContext2D) => {
+      for (const l of links) {
+        if (l.type.emphasis !== 'bold') continue;
+        const s = l.source as GraphNode;
+        const t = l.target as GraphNode;
+        if (typeof s !== 'object' || s.x === undefined || t.x === undefined) continue;
+        const m = linkMidpoint2D({ x: s.x, y: s.y! }, { x: t.x, y: t.y! }, l.curvature);
+        const r = 7.5;
+        ctx.save();
+        ctx.globalAlpha = (!hl || hl.links.has(l.id) ? 1 : 0.25) * (l.speculative ? 0.55 : 1);
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, r, 0, Math.PI * 2);
+        ctx.fillStyle = dark ? '#2b2440' : '#ffffff';
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = l.type.color;
+        ctx.stroke();
+        ctx.font = `${r * 1.15}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(l.type.emoji, m.x, m.y + r * 0.08);
+        ctx.restore();
+      }
+    },
+    [links, hl, dark],
+  );
+
   const paintPointer = useCallback((node: GraphNode, color: string, ctx: CanvasRenderingContext2D) => {
     ctx.fillStyle = color;
     ctx.beginPath();
@@ -136,15 +202,18 @@ export default function Graph2D(props: GraphRenderProps) {
       nodeLabel={() => ''}
       nodeCanvasObject={drawNode}
       nodePointerAreaPaint={paintPointer}
-      linkColor={(l) => withAlpha(l.type.color, linkOn(l) ? 0.9 : 0.12)}
+      linkColor={(l) => withAlpha(l.type.color, linkAlpha(l, linkOn(l)))}
       linkWidth={(l) => (hl?.links.has(l.id) ? l.width + 1 : l.width)}
+      linkCanvasObjectMode={(l) => (l.type.emphasis === 'bold' ? 'before' : undefined)}
+      linkCanvasObject={drawGlow}
+      onRenderFramePost={drawBadges}
       linkCurvature={(l) => l.curvature}
-      linkLineDash={(l) => (l.type.dashed ? [4, 3] : null)}
+      linkLineDash={(l) => (l.speculative ? [2.5, 3.5] : l.type.dashed ? [4, 3] : null)}
       linkLabel={(l) => linkTooltip(l, nameOf)}
       linkDirectionalArrowLength={(l) => (l.mutual ? 0 : 6 + l.width)}
       linkDirectionalArrowRelPos={1}
-      linkDirectionalArrowColor={(l) => withAlpha(l.type.color, linkOn(l) ? 1 : 0.15)}
-      linkDirectionalParticles={(l) => (particles && linkOn(l) ? (l.mutual ? 0 : 2) : 0)}
+      linkDirectionalArrowColor={(l) => withAlpha(l.type.color, Math.min(1, linkAlpha(l, linkOn(l)) + 0.1))}
+      linkDirectionalParticles={(l) => (particles && linkOn(l) ? linkParticles(l) : 0)}
       linkDirectionalParticleWidth={(l) => 2 + l.width * 0.6}
       linkDirectionalParticleSpeed={0.006}
       linkDirectionalParticleColor={(l) => l.type.color}

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { newId, TYPE_COLORS, TYPE_EMOJI } from '../model/defaults';
-import type { RelationshipType, Vault } from '../model/types';
+import type { Emphasis, RelationshipType, Vault } from '../model/types';
 import type { Action } from '../state/reducer';
 import type { Prefs } from '../state/usePrefs';
 import type { VaultApi } from '../state/useVault';
@@ -49,12 +49,15 @@ function TypesTab({ vault, dispatch }: { vault: Vault; dispatch: (a: Action) => 
   const add = () =>
     dispatch({
       type: 'upsertType',
-      relType: { id: newId(), label: 'New type', emoji: '✨', color: TYPE_COLORS[vault.types.length % TYPE_COLORS.length], dashed: false, builtIn: false },
+      relType: { id: newId(), label: 'New type', emoji: '✨', color: TYPE_COLORS[vault.types.length % TYPE_COLORS.length], dashed: false, emphasis: 'normal', builtIn: false },
     });
 
   return (
     <div className="types-tab">
-      <p className="hint">Rename, recolour, or invent your own kinds of connection. Every type is directional and independent.</p>
+      <p className="hint">
+        Rename, recolour, or invent your own kinds of connection. Every type is directional and independent. “BIG” types
+        draw thick and glowing with a badge on the line; “whisper” types draw thin and faint.
+      </p>
       {vault.types.map((t) => (
         <TypeEditor key={t.id} t={t} count={counts.get(t.id) ?? 0} dispatch={dispatch} />
       ))}
@@ -72,6 +75,11 @@ function TypeEditor({ t, count, dispatch }: { t: RelationshipType; count: number
       <div className="type-editor-row">
         <EmojiPicker value={t.emoji} options={TYPE_EMOJI} onChange={(emoji) => set({ emoji })} />
         <input value={t.label} onChange={(e) => set({ label: e.target.value })} aria-label="Type name" />
+        <select value={t.emphasis} onChange={(e) => set({ emphasis: e.target.value as Emphasis })} aria-label="Line style" title="How loudly this type draws on the map">
+          <option value="subtle">whisper</option>
+          <option value="normal">normal</option>
+          <option value="bold">BIG 💖</option>
+        </select>
         <Toggle checked={t.dashed} onChange={(dashed) => set({ dashed })} label="dashed" color={t.color} />
         <span className="count" title="connections of this type">
           {count}

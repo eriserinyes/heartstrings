@@ -115,7 +115,8 @@ export function PersonPanel({
         {pairs.length === 0 && <p className="hint">No connections yet — add one below!</p>}
         <ul className="conn-list">
           {pairs.map(({ other, out, inc }) => {
-            const types = [...new Set([...out, ...inc].map((r) => r.typeId))];
+            // One chip per type per layer, so speculative bonds read as separate.
+            const keys = [...new Set([...out, ...inc].map((r) => `${r.typeId}|${r.speculative ? 1 : 0}`))];
             return (
               <li key={other.id}>
                 <button className="conn-row" onClick={() => onOpenPair(id, other.id)}>
@@ -126,15 +127,24 @@ export function PersonPanel({
                     {other.name}
                   </span>
                   <span className="conn-chips">
-                    {types.map((tid) => {
+                    {keys.map((key) => {
+                      const [tid, specFlag] = key.split('|');
+                      const spec = specFlag === '1';
                       const t = typeById.get(tid);
                       if (!t) return null;
-                      const o = out.some((r) => r.typeId === tid);
-                      const i = inc.some((r) => r.typeId === tid);
+                      const match = (r: Relationship) => r.typeId === tid && !!r.speculative === spec;
+                      const o = out.some(match);
+                      const i = inc.some(match);
                       const arrow = o && i ? '⇄' : o ? '→' : '←';
-                      const title = o && i ? `mutual ${t.label}` : o ? `${person.name} → ${other.name}` : `${other.name} → ${person.name}`;
+                      const dir = o && i ? `mutual ${t.label}` : o ? `${person.name} → ${other.name}` : `${other.name} → ${person.name}`;
                       return (
-                        <span key={tid} className="chip" style={{ '--c': t.color } as React.CSSProperties} title={title}>
+                        <span
+                          key={key}
+                          className={`chip ${spec ? 'chip-spec' : ''}`}
+                          style={{ '--c': t.color } as React.CSSProperties}
+                          title={spec ? `🔮 speculative: ${dir}` : dir}
+                        >
+                          {spec && '🔮'}
                           {t.emoji}
                           <b>{arrow}</b>
                         </span>

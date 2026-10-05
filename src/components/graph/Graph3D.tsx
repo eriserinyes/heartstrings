@@ -4,7 +4,18 @@ import SpriteText from 'three-spritetext';
 import * as THREE from 'three';
 import type { GraphLink, GraphNode } from '../../model/graph';
 import type { Id } from '../../model/types';
-import { highlightSets, linkTooltip, nodeRadius, nodeVal, REL_SIZE, withAlpha, type GraphRenderProps } from './shared';
+import {
+  highlightSets,
+  linkAlpha,
+  linkDistance,
+  linkParticles,
+  linkTooltip,
+  nodeRadius,
+  nodeVal,
+  REL_SIZE,
+  withAlpha,
+  type GraphRenderProps,
+} from './shared';
 
 const SCALE_3D = 0.6;
 const BG = '#17122b';
@@ -54,7 +65,7 @@ export default function Graph3D(props: GraphRenderProps) {
     const g = fg.current;
     if (!g) return;
     g.d3Force('charge')?.strength(-260);
-    g.d3Force('link')?.distance((l: GraphLink) => (l.mutual ? 75 : 100));
+    g.d3Force('link')?.distance((l: GraphLink) => linkDistance(l) * 0.8);
     const scene = g.scene();
     if (!scene.getObjectByName('heartstrings-stars')) scene.add(makeStarfield());
   }, []);
@@ -139,6 +150,30 @@ export default function Graph3D(props: GraphRenderProps) {
 
   const linkOn = (l: GraphLink) => !hl || hl.links.has(l.id);
 
+  // Bold types (primary partner) carry a heart badge riding the line's midpoint.
+  const buildLinkBadge = useCallback((l: GraphLink) => {
+    if (l.type.emphasis !== 'bold') return null as unknown as THREE.Object3D;
+    const badge = new SpriteText(l.type.emoji, 10);
+    badge.fontFace = '"Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif';
+    const mat = badge.material as THREE.SpriteMaterial;
+    mat.depthTest = false; // always visible, like the 2D badge
+    badge.renderOrder = 11;
+    if (l.speculative) mat.opacity = 0.55;
+    return badge;
+  }, []);
+
+  const placeLinkBadge = useCallback(
+    // The library types `link` loosely, hence the cast.
+    (obj: THREE.Object3D | undefined, { start, end }: { start: THREE.Vector3Like; end: THREE.Vector3Like }, link: object) => {
+      if (!obj) return false; // non-bold links have no badge child
+      const curve = (link as { __curve?: THREE.Curve<THREE.Vector3> }).__curve;
+      if (curve) obj.position.copy(curve.getPoint(0.5));
+      else obj.position.set((start.x + end.x) / 2, (start.y + end.y) / 2, (start.z + end.z) / 2);
+      return false; // let the library keep drawing the line itself
+    },
+    [],
+  );
+
   return (
     <ForceGraph3D<GraphNode, GraphLink>
       ref={fg}
@@ -151,7 +186,10 @@ export default function Graph3D(props: GraphRenderProps) {
       nodeVal={nodeVal}
       nodeLabel={() => ''}
       nodeThreeObject={buildNode}
-      linkColor={(l) => withAlpha(l.type.color, linkOn(l) ? 0.95 : 0.12)}
+      linkColor={(l) => withAlpha(l.type.color, linkAlpha(l, linkOn(l)))}
+      linkThreeObjectExtend={true}
+      linkThreeObject={buildLinkBadge}
+      linkPositionUpdate={placeLinkBadge}
       linkOpacity={1}
       linkWidth={(l) => (l.width + (hl?.links.has(l.id) ? 0.8 : 0)) * 0.55}
       linkCurvature={(l) => l.curvature}
@@ -159,7 +197,7 @@ export default function Graph3D(props: GraphRenderProps) {
       linkDirectionalArrowLength={(l) => (l.mutual ? 0 : 4 + l.width)}
       linkDirectionalArrowRelPos={1}
       linkDirectionalArrowColor={(l) => l.type.color}
-      linkDirectionalParticles={(l) => (particles && linkOn(l) ? (l.mutual ? 0 : 3) : 0)}
+      linkDirectionalParticles={(l) => (particles && linkOn(l) ? linkParticles(l) + (linkParticles(l) ? 1 : 0) : 0)}
       linkDirectionalParticleWidth={(l) => 1.2 + l.width * 0.4}
       linkDirectionalParticleSpeed={0.006}
       linkDirectionalParticleColor={(l) => l.type.color}

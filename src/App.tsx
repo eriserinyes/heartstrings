@@ -6,7 +6,7 @@ import PairPanel from './components/PairPanel';
 import { NewPersonForm, PersonPanel } from './components/PersonPanel';
 import SettingsModal from './components/SettingsModal';
 import { Toggle } from './components/ui';
-import { buildGraph, type GraphLink, type GraphNode } from './model/graph';
+import { buildGraph, visibleVault, type GraphLink, type GraphNode } from './model/graph';
 import type { Id } from './model/types';
 import { usePrefs, type Prefs } from './state/usePrefs';
 import { useVault, type VaultApi } from './state/useVault';
@@ -78,16 +78,19 @@ function Workspace({ api }: { api: VaultApi }) {
     [setPrefs],
   );
 
+  // Everything that *reads* goes through `shown`; writes still use the full vault.
+  const shown = useMemo(() => visibleVault(vault, prefs.showSpeculative), [vault, prefs.showSpeculative]);
+  const specCount = useMemo(() => vault.relationships.filter((r) => r.speculative).length, [vault.relationships]);
   const hiddenTypes = useMemo(() => new Set(prefs.hiddenTypes), [prefs.hiddenTypes]);
   const graph = useMemo(
     () =>
-      buildGraph(vault, {
+      buildGraph(shown, {
         hiddenTypes,
         mergeMutual: prefs.mergeMutual,
         focusId: focus?.id ?? null,
         focusDepth: focus?.depth ?? 1,
       }),
-    [vault, hiddenTypes, prefs.mergeMutual, focus],
+    [shown, hiddenTypes, prefs.mergeMutual, focus],
   );
 
   // Drop a selection whose person was deleted (incl. via undo).
@@ -140,12 +143,12 @@ function Workspace({ api }: { api: VaultApi }) {
   }, [vault.people, query]);
   const degree = useMemo(() => {
     const m = new Map<Id, number>();
-    for (const r of vault.relationships) {
+    for (const r of shown.relationships) {
       m.set(r.from, (m.get(r.from) ?? 0) + 1);
       m.set(r.to, (m.get(r.to) ?? 0) + 1);
     }
     return m;
-  }, [vault.relationships]);
+  }, [shown.relationships]);
 
   const focusPerson = focus ? vault.people.find((p) => p.id === focus.id) : null;
   const empty = vault.people.length === 0;
@@ -172,6 +175,15 @@ function Workspace({ api }: { api: VaultApi }) {
         </div>
 
         <div className="top-actions">
+          <button
+            className={`spec-toggle ${prefs.showSpeculative ? 'on' : ''}`}
+            onClick={() => setPrefs({ showSpeculative: !prefs.showSpeculative })}
+            aria-pressed={prefs.showSpeculative}
+            title={prefs.showSpeculative ? 'Hide the speculative layer' : 'Show the speculative layer'}
+          >
+            🔮<span className="hide-sm"> {prefs.showSpeculative ? 'Speculative on' : 'Speculative off'}</span>
+            {!prefs.showSpeculative && specCount > 0 && <span className="spec-badge">{specCount}</span>}
+          </button>
           <span className={`save-dot ${api.saveState}`} title={api.saveState === 'saved' ? 'Encrypted & saved' : api.saveState === 'saving' ? 'Saving…' : 'Save failed!'}>
             {api.saveState === 'saved' ? '🔐' : api.saveState === 'saving' ? '⏳' : '⚠️'}
           </span>
@@ -270,7 +282,7 @@ function Workspace({ api }: { api: VaultApi }) {
           {sel.kind === 'person' && (
             <PersonPanel
               key={sel.id}
-              vault={vault}
+              vault={shown}
               dispatch={dispatch}
               id={sel.id}
               onOpenPair={(a, b) => setSel({ kind: 'pair', a, b })}
@@ -287,6 +299,7 @@ function Workspace({ api }: { api: VaultApi }) {
               b={sel.b}
               onPick={(a, b) => setSel({ kind: 'pair', a, b })}
               onSelectPerson={(id) => setSel({ kind: 'person', id })}
+              showSpeculative={prefs.showSpeculative}
             />
           )}
         </aside>
@@ -320,12 +333,12 @@ function Legend({ prefs, setPrefs, api }: { prefs: Prefs; setPrefs: (p: Partial<
             {api.vault.types.map((t) => (
               <button
                 key={t.id}
-                className={`legend-chip ${hidden.has(t.id) ? 'off' : ''}`}
+                className={`legend-chip ${hidden.has(t.id) ? 'off' : ''} emph-${t.emphasis}`}
                 style={{ '--c': t.color } as React.CSSProperties}
                 onClick={() => toggleType(t.id)}
                 title={hidden.has(t.id) ? `Show ${t.label}` : `Hide ${t.label}`}
               >
-                <span className={`legend-line ${t.dashed ? 'dashed' : ''}`} />
+                <span className={`legend-line ${t.dashed ? 'dashed' : ''} emph-${t.emphasis}`} />
                 {t.emoji} {t.label}
               </button>
             ))}
@@ -340,6 +353,11 @@ function Legend({ prefs, setPrefs, api }: { prefs: Prefs; setPrefs: (p: Partial<
             <span>
               <b>thicker</b> = more ♥
             </span>
+            {prefs.showSpeculative && (
+              <span>
+                <b>┈</b> 🔮 maybe
+              </span>
+            )}
           </div>
           <div className="legend-opts">
             <Toggle checked={prefs.mergeMutual} onChange={(mergeMutual) => setPrefs({ mergeMutual })} label="merge mutual lines" />

@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { createKey, seal, unseal, WrongPassphraseError } from '../crypto/vault';
 import { normaliseVault, vaultReducer } from '../state/reducer';
-import { emptyVault } from './defaults';
-import { buildGraph, metamours, neighbourhood } from './graph';
+import { DEFAULT_TYPES, emptyVault } from './defaults';
+import { buildGraph, metamours, neighbourhood, visibleVault } from './graph';
 import type { Person, Relationship, Vault } from './types';
 
 const person = (id: string, isMe = false): Person => ({ id, name: `P${id}`, emoji: '🐸', color: '#fff', isMe, notes: '' });
-const rel = (id: string, from: string, to: string, typeId: string, intensity = 3): Relationship => ({
+const rel = (id: string, from: string, to: string, typeId: string, intensity = 3, speculative = false): Relationship => ({
   id,
   from,
   to,
@@ -15,6 +15,7 @@ const rel = (id: string, from: string, to: string, typeId: string, intensity = 3
   notes: '',
   since: '',
   createdAt: 0,
+  speculative,
 });
 
 function vaultWith(people: string[], rels: Relationship[]): Vault {
@@ -137,5 +138,74 @@ describe('reducer', () => {
     expect(() => normaliseVault({ nope: true })).toThrow();
     const v = normaliseVault({ people: [{ id: 'x', name: 'X' }], types: [], relationships: [] });
     expect(v.people[0].emoji).toBeTruthy();
+  });
+});
+
+describe('new built-in types', () => {
+  const v1Types = DEFAULT_TYPES.filter((t) => ['friend', 'crush', 'romantic', 'play', 'qpr'].includes(t.id)).map(
+    // v1 vaults had no emphasis field
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    ({ emphasis: _e, ...t }) => t,
+  );
+
+  it('slots primary & acquaintance into a v1 vault and backfills emphasis', () => {
+    const v = normaliseVault({ people: [], relationships: [], types: v1Types });
+    expect(v.types.map((t) => t.id)).toEqual(['friend', 'acquaintance', 'crush', 'primary', 'romantic', 'play', 'qpr']);
+    expect(v.types.find((t) => t.id === 'primary')!.emphasis).toBe('bold');
+    expect(v.types.find((t) => t.id === 'friend')!.emphasis).toBe('normal');
+    expect(v.seededTypeIds).toContain('primary');
+  });
+
+  it('does not resurrect a built-in the user deleted', () => {
+    const seeded = normaliseVault({ people: [], relationships: [], types: v1Types });
+    const withoutPrimary = { ...seeded, types: seeded.types.filter((t) => t.id !== 'primary') };
+    expect(normaliseVault(withoutPrimary).types.some((t) => t.id === 'primary')).toBe(false);
+  });
+
+  it('draws bold types thicker and subtle types thinner', () => {
+    const v = vaultWith(['a', 'b', 'c', 'd'], [rel('1', 'a', 'b', 'primary'), rel('2', 'a', 'c', 'friend'), rel('3', 'a', 'd', 'acquaintance')]);
+    const w = Object.fromEntries(buildGraph(v, opts).links.map((l) => [l.type.id, l.width]));
+    expect(w.primary).toBeGreaterThan(w.friend * 1.5);
+    expect(w.acquaintance).toBeLessThan(w.friend);
+  });
+
+  it('counts primary partners for metamours', () => {
+    const v = vaultWith(['me', 'p', 'm'], [rel('1', 'me', 'p', 'primary'), rel('2', 'p', 'm', 'romantic')]);
+    expect(metamours('me', v)).toEqual(['m']);
+  });
+});
+
+describe('speculative layer', () => {
+  const v = vaultWith(
+    ['a', 'b', 'c'],
+    [
+      rel('1', 'a', 'b', 'romantic'),
+      rel('2', 'b', 'a', 'romantic', 3, true), // speculative return — must NOT make the real one mutual
+      rel('3', 'a', 'c', 'crush', 3, true),
+    ],
+  );
+
+  it('hidden layer behaves as if it does not exist', () => {
+    const g = buildGraph(visibleVault(v, false), opts);
+    expect(g.links.map((l) => l.id)).toEqual(['r:1']);
+    expect(g.nodes.find((n) => n.id === 'c')!.degree).toBe(0);
+  });
+
+  it('shown layer keeps real and speculative links separate', () => {
+    const g = buildGraph(visibleVault(v, true), opts);
+    expect(g.links).toHaveLength(3);
+    expect(g.links.every((l) => !l.mutual)).toBe(true);
+    expect(g.links.filter((l) => l.speculative)).toHaveLength(2);
+  });
+
+  it('allows the same connection on both layers but no duplicates within one', () => {
+    let x = vaultWith(['a', 'b'], [rel('1', 'a', 'b', 'friend')]);
+    x = vaultReducer(x, { type: 'addRelationships', rels: [rel('2', 'a', 'b', 'friend', 3, true), rel('3', 'a', 'b', 'friend', 3, true)] });
+    expect(x.relationships.map((r) => r.id)).toEqual(['1', '2']);
+  });
+
+  it('old relationships default to the real layer', () => {
+    const n = normaliseVault({ people: [], types: [], relationships: [{ id: 'r', from: 'a', to: 'b', typeId: 'friend' }] });
+    expect(n.relationships[0].speculative).toBe(false);
   });
 });

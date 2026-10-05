@@ -16,6 +16,7 @@ export default function PairPanel({
   b,
   onPick,
   onSelectPerson,
+  showSpeculative,
 }: {
   vault: Vault;
   dispatch: (x: Action) => void;
@@ -23,7 +24,13 @@ export default function PairPanel({
   b: Id | null;
   onPick: (a: Id | null, b: Id | null) => void;
   onSelectPerson: (id: Id) => void;
+  /** When the speculative layer is hidden, only real connections are editable. */
+  showSpeculative: boolean;
 }) {
+  const [layerChoice, setLayer] = useState<'real' | 'spec'>('real');
+  const layer = showSpeculative ? layerChoice : 'real';
+  const specCount = (x: Id | null, y: Id | null) =>
+    vault.relationships.filter((r) => r.speculative && ((r.from === x && r.to === y) || (r.from === y && r.to === x))).length;
   const pa = vault.people.find((p) => p.id === a) ?? null;
   const pb = vault.people.find((p) => p.id === b) ?? null;
   const sorted = [...vault.people].sort((x, y) => Number(y.isMe) - Number(x.isMe) || x.name.localeCompare(y.name));
@@ -55,10 +62,24 @@ export default function PairPanel({
         </PersonSlot>
       </div>
 
+      {pa && pb && showSpeculative && (
+        <div className="layer-switch" role="radiogroup" aria-label="Layer">
+          <button role="radio" aria-checked={layer === 'real'} className={layer === 'real' ? 'on' : ''} onClick={() => setLayer('real')}>
+            💫 Real
+          </button>
+          <button role="radio" aria-checked={layer === 'spec'} className={layer === 'spec' ? 'on spec' : ''} onClick={() => setLayer('spec')}>
+            🔮 Speculative{specCount(a, b) > 0 && <span className="layer-count">{specCount(a, b)}</span>}
+          </button>
+        </div>
+      )}
+      {pa && pb && layer === 'spec' && (
+        <p className="hint layer-hint">What-ifs and maybes. These sit alongside the real connections and vanish when the 🔮 layer is off.</p>
+      )}
+
       {pa && pb ? (
-        <div className="type-rows">
+        <div className={`type-rows ${layer === 'spec' ? 'spec' : ''}`}>
           {vault.types.map((t) => (
-            <TypeRow key={t.id} type={t} a={pa} b={pb} vault={vault} dispatch={dispatch} />
+            <TypeRow key={t.id} type={t} a={pa} b={pb} vault={vault} dispatch={dispatch} speculative={layer === 'spec'} />
           ))}
         </div>
       ) : (
@@ -79,9 +100,25 @@ function PersonSlot({ person, children, onClick }: { person: Person | null; chil
   );
 }
 
-function TypeRow({ type, a, b, vault, dispatch }: { type: RelationshipType; a: Person; b: Person; vault: Vault; dispatch: (x: Action) => void }) {
-  const ab = vault.relationships.find((r) => r.typeId === type.id && r.from === a.id && r.to === b.id);
-  const ba = vault.relationships.find((r) => r.typeId === type.id && r.from === b.id && r.to === a.id);
+function TypeRow({
+  type,
+  a,
+  b,
+  vault,
+  dispatch,
+  speculative,
+}: {
+  type: RelationshipType;
+  a: Person;
+  b: Person;
+  vault: Vault;
+  dispatch: (x: Action) => void;
+  speculative: boolean;
+}) {
+  const find = (from: Person, to: Person) =>
+    vault.relationships.find((r) => r.typeId === type.id && r.from === from.id && r.to === to.id && !!r.speculative === speculative);
+  const ab = find(a, b);
+  const ba = find(b, a);
   const [open, setOpen] = useState(false);
   const active = !!(ab || ba);
 
@@ -89,7 +126,9 @@ function TypeRow({ type, a, b, vault, dispatch }: { type: RelationshipType; a: P
     if (on && !existing) {
       dispatch({
         type: 'addRelationships',
-        rels: [{ id: newId(), from: from.id, to: to.id, typeId: type.id, intensity: 3, notes: '', since: '', createdAt: Date.now() }],
+        rels: [
+          { id: newId(), from: from.id, to: to.id, typeId: type.id, intensity: 3, notes: '', since: '', createdAt: Date.now(), speculative },
+        ],
       });
     } else if (!on && existing) {
       dispatch({ type: 'removeRelationship', id: existing.id });
@@ -99,7 +138,7 @@ function TypeRow({ type, a, b, vault, dispatch }: { type: RelationshipType; a: P
   const status = ab && ba ? 'mutual 💫' : ab ? `${a.name} → ${b.name}` : ba ? `${b.name} → ${a.name}` : '';
 
   return (
-    <div className={`type-row ${active ? 'active' : ''}`} style={{ '--c': type.color } as React.CSSProperties}>
+    <div className={`type-row ${active ? 'active' : ''} emph-${type.emphasis}`} style={{ '--c': type.color } as React.CSSProperties}>
       <div className="type-row-main">
         <span className="type-name">
           <span className="type-emoji">{type.emoji}</span>

@@ -73,15 +73,65 @@ Relationship { from, to, typeId, intensity 1–5, since?, notes }
 dashed on/off, delete) plus custom types. I added **Queerplatonic** beyond your list because it's
 common in the same communities and costs nothing to delete.
 
-| Type          | Emoji | Colour  | Style  |
-| ------------- | ----- | ------- | ------ |
-| Friendship    | 🌼    | mint    | solid  |
-| Crush         | 💘    | pink    | dashed |
-| Romantic      | 💞    | rose    | solid  |
-| Play partner  | 🔥    | violet  | solid  |
-| Queerplatonic | 🌈    | peach   | solid  |
+| Type            | Emoji | Colour   | Style                          |
+| --------------- | ----- | -------- | ------------------------------ |
+| Friendship      | 🌼    | mint     | solid                          |
+| Acquaintance    | 👋    | lavender | **whisper** (thin, faint)      |
+| Crush           | 💘    | pink     | dashed                         |
+| Primary partner | 💖    | magenta  | **BIG** (thick, glow, badge)   |
+| Romantic        | 💞    | rose     | solid                          |
+| Play partner    | 🔥    | violet   | solid                          |
+| Queerplatonic   | 🌈    | peach    | solid                          |
 
 Crush is dashed by default to read as "unspoken / tentative".
+
+### Emphasis: BIG / normal / whisper (added after v1)
+
+Asked for: a primary partner type "with a big and obvious style", and an acquaintance type.
+Rather than hard-coding a special case for primary, I added an **`emphasis`** property to every
+type (editable in Settings, so you could make any type BIG):
+
+- **BIG** (primary partner): about 2× line width, a soft glow under the line, a 💖 badge riding
+  the midpoint (drawn last in 2D so nodes never cover it; a sprite in 3D), shorter springs so
+  primaries sit close together, more sparkles on one-way links, and it stays partly visible
+  when hover-dimmed. Its legend chip and pair-editor row are bigger and glowier too.
+- **whisper** (acquaintance): thin, half opacity, no sparkles, and longer springs so
+  acquaintances drift to the edge of your web instead of crowding the centre.
+- Primary partner is **not exclusive**: you can have several, or none. Some polycules have
+  multiple primaries, and enforcing one-per-person would be a value judgement the app shouldn't make.
+- Primary counts as a "partner" for metamours.
+
+**Migrating existing vaults:** the vault now records `seededTypeIds`, the built-ins it has been
+offered. On unlock, any built-in it hasn't been offered is inserted (acquaintance after
+friendship, primary before romantic). Built-ins you've deleted stay deleted, because they're
+already in that list. v1 vaults are treated as having been offered the original five.
+
+## 2b. The speculative layer (added after v1)
+
+Asked for: a "speculative" layer that "admits all the same relationship connections but can be
+toggled on and off as if it doesn't exist".
+
+- **Model:** every `Relationship` has a `speculative` flag. A connection is unique by
+  (from, to, type, layer), so "Alex → Sam: crush" can exist for real *and* as a what-if, fully
+  independently. Old data defaults to real.
+- **Toggle:** a 🔮 pill in the top bar. When it's off, a single `visibleVault()` filter removes
+  speculative connections **before anything reads the data**: map, people-list counts,
+  connection lists, metamours, focus neighbourhoods. So the app genuinely behaves as if they
+  don't exist, not just as if they're drawn invisibly. A small badge on the pill shows how many
+  are hidden, so you don't forget they're there. Writes still go to the full vault, and nothing
+  is ever deleted by toggling.
+- **Editing:** when the layer is on, the pair editor gets a **💫 Real / 🔮 Speculative** switch.
+  Each layer has its own full set of A→B / B→A switches (dashed, striped rows in speculative
+  mode). When the layer is off, the switch disappears and you can only edit real connections.
+- **Drawing:** speculative links are dotted (overriding a type's own dash pattern) at about 70%
+  opacity, with one sparkle at most, and keep their type colour. Real and speculative links of
+  the same type never merge into a "mutual" line, and a speculative reply doesn't make a real
+  one-way connection count as mutual. They fan out as separate curves. Tooltips and person-panel
+  chips are marked 🔮.
+- **Privacy:** speculative data is in the encrypted vault like everything else. Only the
+  on/off preference is plaintext.
+- **Not done (ideas):** speculative *people* (someone you haven't met yet), and a "promote to
+  real" button on a speculative connection.
 
 ## 3. The pair editor is the core UI
 
@@ -154,7 +204,7 @@ included). Dev server for Claude's preview runs on port 5191.
 
 ## 10. Testing done
 
-- 13 unit tests: crypto round-trip and no plaintext in ciphertext, wrong passphrase rejected,
+- 21 unit tests (13 at v1, 8 added with the new types and speculative layer): crypto round-trip and no plaintext in ciphertext, wrong passphrase rejected,
   unique IV per save, mutual merging, parallel-link fan-out, type filtering and dangling-link
   removal, focus neighbourhoods, metamours, reducer invariants.
 - Manual run in the preview browser with throwaway data: create vault → add people → pair

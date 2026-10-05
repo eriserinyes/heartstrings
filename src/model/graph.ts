@@ -1,3 +1,4 @@
+import { PARTNER_TYPE_IDS } from './defaults';
 import type { Id, Person, Relationship, RelationshipType, Vault } from './types';
 
 export interface GraphNode {
@@ -20,6 +21,7 @@ export interface GraphLink {
   /** One relationship for a one-way link; two (A→B and B→A) for a merged mutual link. */
   rels: Relationship[];
   mutual: boolean;
+  speculative: boolean;
   curvature: number;
   width: number;
 }
@@ -39,13 +41,28 @@ export function pairKey(a: Id, b: Id): string {
   return a < b ? `${a}|${b}` : `${b}|${a}`;
 }
 
-export function intensityWidth(intensity: number): number {
-  return 0.8 + intensity * 0.55;
+export function intensityWidth(intensity: number, type?: RelationshipType): number {
+  const w = 0.8 + intensity * 0.55;
+  if (type?.emphasis === 'bold') return w * 1.8 + 2;
+  if (type?.emphasis === 'subtle') return w * 0.6;
+  return w;
 }
 
-/** True when `rel` has a counterpart of the same type pointing back. */
+/** True when `rel` has a counterpart of the same type, on the same layer, pointing back. */
 export function isMutual(rel: Relationship, all: Relationship[]): boolean {
-  return all.some((r) => r.typeId === rel.typeId && r.from === rel.to && r.to === rel.from);
+  return all.some(
+    (r) => r.typeId === rel.typeId && r.from === rel.to && r.to === rel.from && !!r.speculative === !!rel.speculative,
+  );
+}
+
+/**
+ * The vault as the rest of the UI should see it. With the speculative layer
+ * switched off, speculative connections vanish everywhere — map, lists,
+ * counts, metamours — exactly as if they'd never been added.
+ */
+export function visibleVault(vault: Vault, showSpeculative: boolean): Vault {
+  if (showSpeculative) return vault;
+  return { ...vault, relationships: vault.relationships.filter((r) => !r.speculative) };
 }
 
 /** People within `depth` undirected hops of `start`, along the given relationships. */
@@ -94,7 +111,15 @@ export function buildGraph(vault: Vault, opts: GraphOptions): { nodes: GraphNode
     if (consumed.has(r.id)) continue;
     const type = typeById.get(r.typeId)!;
     const back = opts.mergeMutual
-      ? rels.find((o) => !consumed.has(o.id) && o.id !== r.id && o.typeId === r.typeId && o.from === r.to && o.to === r.from)
+      ? rels.find(
+          (o) =>
+            !consumed.has(o.id) &&
+            o.id !== r.id &&
+            o.typeId === r.typeId &&
+            o.from === r.to &&
+            o.to === r.from &&
+            !!o.speculative === !!r.speculative,
+        )
       : undefined;
     if (back) {
       consumed.add(r.id).add(back.id);
@@ -107,8 +132,9 @@ export function buildGraph(vault: Vault, opts: GraphOptions): { nodes: GraphNode
         type,
         rels: [a, b],
         mutual: true,
+        speculative: !!a.speculative,
         curvature: 0,
-        width: intensityWidth((a.intensity + b.intensity) / 2) + 0.6,
+        width: intensityWidth((a.intensity + b.intensity) / 2, type) + 0.6,
       });
     } else {
       consumed.add(r.id);
@@ -119,8 +145,9 @@ export function buildGraph(vault: Vault, opts: GraphOptions): { nodes: GraphNode
         type,
         rels: [r],
         mutual: false,
+        speculative: !!r.speculative,
         curvature: 0,
-        width: intensityWidth(r.intensity),
+        width: intensityWidth(r.intensity, type),
       });
     }
   }
@@ -139,6 +166,7 @@ export function buildGraph(vault: Vault, opts: GraphOptions): { nodes: GraphNode
     group.sort(
       (x, y) =>
         typeOrder.get(x.type.id)! - typeOrder.get(y.type.id)! ||
+        Number(x.speculative) - Number(y.speculative) ||
         Number((x.source as Id) > (x.target as Id)) - Number((y.source as Id) > (y.target as Id)),
     );
     const mid = (group.length - 1) / 2;
@@ -163,7 +191,7 @@ export function buildGraph(vault: Vault, opts: GraphOptions): { nodes: GraphNode
  * Metamours: people who share a romantic/play partner with `id` but aren't
  * themselves romantically/sexually linked to `id`. Derived, never stored.
  */
-export function metamours(id: Id, vault: Vault, partnerTypes: ReadonlySet<Id> = new Set(['romantic', 'play', 'qpr'])): Id[] {
+export function metamours(id: Id, vault: Vault, partnerTypes: ReadonlySet<Id> = PARTNER_TYPE_IDS): Id[] {
   const partnersOf = (pid: Id) => {
     const s = new Set<Id>();
     for (const r of vault.relationships) {

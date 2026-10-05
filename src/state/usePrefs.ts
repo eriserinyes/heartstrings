@@ -12,6 +12,8 @@ export interface Prefs {
   labels: boolean;
   peopleOpen: boolean;
   autoLockMinutes: number;
+  /** Show the 🔮 speculative layer. Off = it behaves as if it doesn't exist. */
+  showSpeculative: boolean;
 }
 
 const KEY = 'heartstrings.prefs.v1';
@@ -24,6 +26,7 @@ const DEFAULTS: Prefs = {
   labels: true,
   peopleOpen: true,
   autoLockMinutes: 15,
+  showSpeculative: true,
 };
 
 function load(): Prefs {
