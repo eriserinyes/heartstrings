@@ -16,13 +16,6 @@ export const V1_TYPE_IDS = ['friend', 'crush', 'romantic', 'play', 'qpr'];
 /** Types counted as "partners" for metamour detection. */
 export const PARTNER_TYPE_IDS = new Set(['primary', 'romantic', 'play', 'qpr']);
 
-export const PERSON_EMOJI = [
-  '🦊', '🐰', '🐸', '🐱', '🐻', '🦄', '🐙', '🦋', '🐝', '🐧', '🦉', '🐢',
-  '🌸', '🌻', '🍄', '🌙', '⭐', '🍓', '🍑', '🧁', '🎀', '🪐', '🌊', '🔮',
-];
-
-export const TYPE_EMOJI = ['💖', '👋', '🌼', '💘', '💞', '🔥', '🌈', '💜', '🤝', '🫶', '✨', '🏡', '🎲', '🧸', '⛓️', '🌶️', '💍', '🌱'];
-
 export const TYPE_COLORS = [
   '#3fbfa8', '#ff7eb6', '#ff4f6d', '#9a6bff', '#ffa94d',
   '#4dabf7', '#69db7c', '#f783ac', '#e599f7', '#ffd43b', '#a9e34b', '#868e96',

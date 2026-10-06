@@ -1,18 +1,21 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import type { EmojiGroup } from '../model/emoji';
 
 export function EmojiPicker({
   value,
-  options,
+  groups,
   onChange,
   size = 'md',
 }: {
   value: string;
-  options: string[];
+  groups: EmojiGroup[];
   onChange: (e: string) => void;
   size?: 'md' | 'lg';
 }) {
   const [open, setOpen] = useState(false);
   const [custom, setCustom] = useState('');
+  // Open on the tab that holds the current emoji, if any.
+  const [tab, setTab] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -20,24 +23,41 @@ export function EmojiPicker({
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
   }, [open]);
+  const toggle = () => {
+    if (!open) setTab(Math.max(0, groups.findIndex((g) => g.emoji.includes(value))));
+    setOpen((o) => !o);
+  };
+  const pickOne = (e: string) => {
+    onChange(e);
+    setOpen(false);
+  };
+  const group = groups[tab] ?? groups[0];
   return (
     <div className="emoji-picker" ref={ref}>
-      <button type="button" className={`emoji-btn emoji-${size}`} onClick={() => setOpen((o) => !o)} title="Change emoji">
+      <button type="button" className={`emoji-btn emoji-${size}`} onClick={toggle} title="Change emoji">
         {value}
       </button>
       {open && (
         <div className="emoji-pop">
-          <div className="emoji-grid">
-            {options.map((e) => (
+          <div className="emoji-tabs" role="tablist">
+            {groups.map((g, i) => (
               <button
                 type="button"
-                key={e}
-                className={e === value ? 'on' : ''}
-                onClick={() => {
-                  onChange(e);
-                  setOpen(false);
-                }}
+                key={g.label}
+                role="tab"
+                aria-selected={i === tab}
+                className={i === tab ? 'on' : ''}
+                onClick={() => setTab(i)}
+                title={g.label}
               >
+                {g.icon}
+              </button>
+            ))}
+          </div>
+          <div className="emoji-group-label">{group.label}</div>
+          <div className="emoji-grid" role="tabpanel">
+            {group.emoji.map((e) => (
+              <button type="button" key={e} className={e === value ? 'on' : ''} onClick={() => pickOne(e)}>
                 {e}
               </button>
             ))}
@@ -50,9 +70,10 @@ export function EmojiPicker({
             onKeyDown={(ev) => {
               if (ev.key === 'Enter' && custom.trim()) {
                 ev.preventDefault();
-                onChange([...custom.trim()].slice(0, 2).join(''));
+                // Keep the first grapheme so ZWJ sequences (🏳️‍🌈, 🧑‍🚀) survive intact.
+                const first = [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(custom.trim())][0]?.segment;
+                if (first) pickOne(first);
                 setCustom('');
-                setOpen(false);
               }
             }}
           />

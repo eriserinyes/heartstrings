@@ -295,6 +295,14 @@ included). Dev server for Claude's preview runs on port 5191.
 someone or changing their emoji didn't show in 3D until a reload. They now rebuild whenever the
 data changes, which is cheap at friend-group scale.
 
+**Emoji palettes (2026-10-06):** the pickers grew from 24 / 18 one-tap options to about 280
+for people (Animals, Nature, Food, Faces & folks, Things & hobbies, Hearts & symbols) and about
+125 for relationship types (Love, Bonds, Spicy, Vibes, Signals), in tabs with a scrolling grid.
+They live in `src/model/emoji.ts`. The picker opens on the tab containing the current emoji, and
+the type-or-paste box still accepts anything. It now keeps the whole first emoji, so multi-part
+ones like 🏳️‍🌈 and 🧑‍🚀 aren't chopped. Country flags are left out because Windows draws them as
+two letters. A test checks that each palette has no duplicates and every entry is one emoji.
+
 ## 11. Ideas for v2 (not built)
 
 - **Plaintext export** (CSV/JSON) behind a confirmation, for moving data elsewhere.

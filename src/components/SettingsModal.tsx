@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { newId, TYPE_COLORS, TYPE_EMOJI } from '../model/defaults';
+import { newId, TYPE_COLORS } from '../model/defaults';
+import { TYPE_EMOJI_GROUPS } from '../model/emoji';
 import type { Emphasis, RelationshipType, Vault } from '../model/types';
 import type { Action } from '../state/reducer';
 import type { Prefs } from '../state/usePrefs';
@@ -75,7 +76,7 @@ function TypeEditor({ t, count, dispatch }: { t: RelationshipType; count: number
   return (
     <div className="type-editor" style={{ '--c': t.color } as React.CSSProperties}>
       <div className="type-editor-row">
-        <EmojiPicker value={t.emoji} options={TYPE_EMOJI} onChange={(emoji) => set({ emoji })} />
+        <EmojiPicker value={t.emoji} groups={TYPE_EMOJI_GROUPS} onChange={(emoji) => set({ emoji })} />
         <input value={t.label} onChange={(e) => set({ label: e.target.value })} aria-label="Type name" />
         <select value={t.emphasis} onChange={(e) => set({ emphasis: e.target.value as Emphasis })} aria-label="Line style" title="How loudly this type draws on the map">
           <option value="subtle">whisper</option>

@@ -3,6 +3,7 @@ import { createKey, seal, unseal, WrongPassphraseError } from '../crypto/vault';
 import { collapseUndirected, normaliseVault, vaultReducer } from '../state/reducer';
 import { DEFAULT_TYPES, emptyVault } from './defaults';
 import { buildGraph, metamours, neighbourhood, visibleVault } from './graph';
+import { PERSON_EMOJI_GROUPS, TYPE_EMOJI_GROUPS } from './emoji';
 import { countCrossings, countOverlaps, segmentsCross, uniqueEdges, untangle, type Pt } from './untangle';
 import type { Person, Relationship, Vault } from './types';
 
@@ -339,5 +340,20 @@ describe('speculative people', () => {
     expect(x.people.find((p) => p.id === 'maybe')).toMatchObject({ isMe: true, speculative: false });
     x = vaultReducer(x, { type: 'addPerson', person: { ...person('z', true), speculative: true } });
     expect(x.people.find((p) => p.id === 'z')!.speculative).toBe(false);
+  });
+});
+
+describe('emoji palettes', () => {
+  const seg = (s: string) => [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(s)].length;
+
+  it.each([...PERSON_EMOJI_GROUPS, ...TYPE_EMOJI_GROUPS])('$label: single emoji, no duplicates', (g) => {
+    expect(g.emoji.length).toBeGreaterThan(10);
+    expect(new Set(g.emoji).size).toBe(g.emoji.length);
+    for (const e of g.emoji) expect(seg(e)).toBe(1);
+  });
+
+  it('every built-in type emoji is offered in the type picker', () => {
+    const all = new Set(TYPE_EMOJI_GROUPS.flatMap((g) => g.emoji));
+    for (const t of DEFAULT_TYPES) expect(all.has(t.emoji)).toBe(true);
   });
 });

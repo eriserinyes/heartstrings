@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { metamours } from '../model/graph';
-import { ME_COLOR, newId, PERSON_COLORS, PERSON_EMOJI, pick } from '../model/defaults';
+import { ME_COLOR, newId, PERSON_COLORS, pick } from '../model/defaults';
+import { PERSON_EMOJI_GROUPS, PERSON_STARTERS } from '../model/emoji';
 import type { Id, Person, Relationship, Vault } from '../model/types';
 import type { Action } from '../state/reducer';
 import { ConfirmButton, EmojiPicker, Swatches, Toggle } from './ui';
@@ -21,7 +22,7 @@ export function NewPersonForm({
 }: Common & { onCreated: (id: Id) => void; onCancel: () => void; showSpeculative: boolean }) {
   const noMe = !vault.people.some((p) => p.isMe);
   const [name, setName] = useState('');
-  const [emoji, setEmoji] = useState(() => pick(PERSON_EMOJI));
+  const [emoji, setEmoji] = useState(() => pick(PERSON_STARTERS));
   const [isMe, setIsMe] = useState(noMe);
   const [speculative, setSpeculative] = useState(false);
   const [color, setColor] = useState(() => (noMe ? ME_COLOR : pick(PERSON_COLORS)));
@@ -43,7 +44,7 @@ export function NewPersonForm({
     >
       <h3 className="panel-title">{noMe && isMe ? 'Let’s start with you 💛' : 'Add someone ✨'}</h3>
       <div className="person-head">
-        <EmojiPicker value={emoji} options={PERSON_EMOJI} onChange={setEmoji} size="lg" />
+        <EmojiPicker value={emoji} groups={PERSON_EMOJI_GROUPS} onChange={setEmoji} size="lg" />
         <input
           className="name-input"
           autoFocus
@@ -118,7 +119,7 @@ export function PersonPanel({
   return (
     <div className="panel-body">
       <div className="person-head">
-        <EmojiPicker value={person.emoji} options={PERSON_EMOJI} onChange={(emoji) => set({ emoji })} size="lg" />
+        <EmojiPicker value={person.emoji} groups={PERSON_EMOJI_GROUPS} onChange={(emoji) => set({ emoji })} size="lg" />
         <input className="name-input" value={person.name} onChange={(e) => set({ name: e.target.value })} aria-label="Name" />
       </div>
       <Swatches value={person.color} options={[ME_COLOR, ...PERSON_COLORS]} onChange={(color) => set({ color })} />
