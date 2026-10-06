@@ -22,13 +22,13 @@ export function vaultReducer(v: Vault, a: Action): Vault {
     case 'addPerson': {
       // Only one "me": claiming it clears it from everyone else.
       const people = a.person.isMe ? v.people.map((p) => (p.isMe ? { ...p, isMe: false } : p)) : v.people;
-      return { ...v, people: [...people, a.person] };
+      return { ...v, people: [...people, realIfMe(a.person)] };
     }
     case 'updatePerson':
       return {
         ...v,
         people: v.people.map((p) =>
-          p.id === a.id ? { ...p, ...a.patch } : a.patch.isMe && p.isMe ? { ...p, isMe: false } : p,
+          p.id === a.id ? realIfMe({ ...p, ...a.patch }) : a.patch.isMe && p.isMe ? { ...p, isMe: false } : p,
         ),
       };
     case 'removePerson':
@@ -75,6 +75,11 @@ export function vaultReducer(v: Vault, a: Action): Vault {
     case 'clearPins':
       return { ...v, people: v.people.map(({ pin: _pin, ...p }) => p) };
   }
+}
+
+/** You are never hypothetical. */
+function realIfMe(p: Person): Person {
+  return p.isMe && p.speculative ? { ...p, speculative: false } : p;
 }
 
 function undirectedIds(types: RelationshipType[]): Set<Id> {

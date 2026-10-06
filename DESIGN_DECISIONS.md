@@ -154,8 +154,26 @@ toggled on and off as if it doesn't exist".
   chips are marked 🔮.
 - **Privacy:** speculative data is in the encrypted vault like everything else. Only the
   on/off preference is plaintext.
-- **Not done (ideas):** speculative *people* (someone you haven't met yet), and a "promote to
-  real" button on a speculative connection.
+- **Speculative people** (added 2026-10-06): a person can be flagged 🔮 speculative (someone
+  you haven't met, might date, are imagining). Hiding the layer removes them **and every
+  connection touching them**, through the same `visibleVault()` filter, so they're absent from
+  the map, lists, counts, metamours and pickers. If one is selected or focused when the layer
+  goes off, the panel closes.
+  - Connections involving a speculative person **draw** as speculative, but their stored layer
+    is left alone. So switching the person to real ("make them real") also promotes their
+    regular connections, while ones you separately put on the speculative layer stay
+    speculative. That seemed the most natural reading of "they're real now".
+  - **"Me" is never speculative**; the reducer enforces it (claiming "me" clears the flag).
+  - Look: see-through node with a dashed outline, a small purple **?** badge, a 🔮 before
+    their name, italic in the people list, a dashed avatar in the pair editor (plus a note that
+    everything between them is speculative too). In 3D: a ghostly sphere, ? sprite, 🔮 label.
+- **? on every speculative line** (added 2026-10-06): a round "?" badge in the type's colour
+  sits at the midpoint of every speculative line, whether it's on the speculative layer or
+  touches a speculative person. On BIG lines that already carry a 💖 badge, the ? tucks in at
+  the heart's upper-right. Badges are drawn after everything else in 2D so nodes never hide
+  them, and as always-on-top sprites in 3D.
+- **Not done (idea):** a one-click "promote to real" on a single speculative connection
+  (today: switch it off on the speculative layer and on in the real one).
 
 ## 3. The pair editor is the core UI
 
@@ -260,16 +278,22 @@ included). Dev server for Claude's preview runs on port 5191.
 
 ## 10. Testing done
 
-- 32 unit tests (13 at v1, 8 with the new types and speculative layer, 11 with the
-  directionality redesign and untangling): crypto round-trip and no plaintext in ciphertext, wrong passphrase rejected,
+- 35 unit tests (13 at v1, 8 with the new types and speculative layer, 11 with the
+  directionality redesign and untangling, 3 with speculative people): crypto round-trip and no plaintext in ciphertext, wrong passphrase rejected,
   unique IV per save, mutual merging, parallel-link fan-out, type filtering and dangling-link
   removal, focus neighbourhoods, metamours, reducer invariants; plus the speculative layer, migration of new built-ins, shared bonds drawing as one line,
   migration folding of old partner records, reversed-duplicate rejection, round-tripping a type
   between one-way and shared; crossing detection, untangling a bow-tie, moving a person off a
-  line, and pinned nodes never moving.
+  line, and pinned nodes never moving; speculative people hiding with all their connections,
+  their connections drawing as speculative without changing the stored layer, and "me" never
+  being speculative.
 - Manual run in the preview browser with throwaway data: create vault → add people → pair
   editor → 2D render → 3D render → node and link clicks in both → wrong and right passphrase →
   focus mode → remove + undo → mobile layout (drawer + bottom sheet) → light and dark themes.
+
+**Side fix (2026-10-06):** 3D person objects were built once and never refreshed, so renaming
+someone or changing their emoji didn't show in 3D until a reload. They now rebuild whenever the
+data changes, which is cheap at friend-group scale.
 
 ## 11. Ideas for v2 (not built)
 

@@ -44,6 +44,7 @@ export default function PairPanel({
         .map((p) => (
           <option key={p.id} value={p.id}>
             {p.emoji} {p.name}
+            {p.speculative ? ' 🔮' : ''}
           </option>
         ))}
     </select>
@@ -73,6 +74,12 @@ export default function PairPanel({
           </button>
         </div>
       )}
+      {pa && pb && (pa.speculative || pb.speculative) && (
+        <p className="hint layer-hint">
+          🔮 {[pa, pb].filter((p) => p.speculative).map((p) => p.name).join(' and ')}{' '}
+          {pa.speculative && pb.speculative ? 'are' : 'is'} speculative, so everything between them is too.
+        </p>
+      )}
       {pa && pb && layer === 'spec' && (
         <p className="hint layer-hint">What-ifs and maybes. These sit alongside the real connections and vanish when the 🔮 layer is off.</p>
       )}
@@ -93,7 +100,12 @@ export default function PairPanel({
 function PersonSlot({ person, children, onClick }: { person: Person | null; children: React.ReactNode; onClick?: () => void }) {
   return (
     <div className="pair-slot">
-      <button className="pair-avatar" style={{ background: person?.color ?? 'var(--line)' }} onClick={onClick} disabled={!onClick}>
+      <button
+        className={`pair-avatar ${person?.speculative ? 'spec' : ''}`}
+        style={{ background: person?.color ?? 'var(--line)' }}
+        onClick={onClick}
+        disabled={!onClick}
+      >
         {person?.emoji ?? '?'}
       </button>
       {children}

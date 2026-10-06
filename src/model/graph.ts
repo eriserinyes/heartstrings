@@ -63,12 +63,23 @@ export function isMutual(rel: Relationship, all: Relationship[], type?: Relation
 
 /**
  * The vault as the rest of the UI should see it. With the speculative layer
- * switched off, speculative connections vanish everywhere — map, lists,
- * counts, metamours — exactly as if they'd never been added.
+ * switched off, speculative people and connections — and every connection
+ * touching a speculative person — vanish everywhere (map, lists, counts,
+ * metamours), exactly as if they'd never been added.
  */
 export function visibleVault(vault: Vault, showSpeculative: boolean): Vault {
   if (showSpeculative) return vault;
-  return { ...vault, relationships: vault.relationships.filter((r) => !r.speculative) };
+  const hidden = new Set(vault.people.filter((p) => p.speculative).map((p) => p.id));
+  return {
+    ...vault,
+    people: vault.people.filter((p) => !p.speculative),
+    relationships: vault.relationships.filter((r) => !r.speculative && !hidden.has(r.from) && !hidden.has(r.to)),
+  };
+}
+
+/** A connection reads as speculative if it's on that layer or involves a speculative person. */
+export function speculativePeople(vault: Vault): Set<Id> {
+  return new Set(vault.people.filter((p) => p.speculative).map((p) => p.id));
 }
 
 /** People within `depth` undirected hops of `start`, along the given relationships. */
@@ -98,6 +109,8 @@ export function neighbourhood(start: Id, rels: Relationship[], depth: number): S
 export function buildGraph(vault: Vault, opts: GraphOptions): { nodes: GraphNode[]; links: GraphLink[] } {
   const typeById = new Map(vault.types.map((t) => [t.id, t]));
   const personIds = new Set(vault.people.map((p) => p.id));
+  const specPeople = speculativePeople(vault);
+  const looksSpeculative = (r: Relationship) => !!r.speculative || specPeople.has(r.from) || specPeople.has(r.to);
 
   let rels = vault.relationships.filter(
     (r) => !opts.hiddenTypes.has(r.typeId) && typeById.has(r.typeId) && personIds.has(r.from) && personIds.has(r.to),
@@ -127,7 +140,7 @@ export function buildGraph(vault: Vault, opts: GraphOptions): { nodes: GraphNode
         type,
         rels: [r],
         mutual: true,
-        speculative: !!r.speculative,
+        speculative: looksSpeculative(r),
         curvature: 0,
         width: intensityWidth(r.intensity, type) + 0.6,
       });
@@ -155,7 +168,7 @@ export function buildGraph(vault: Vault, opts: GraphOptions): { nodes: GraphNode
         type,
         rels: [a, b],
         mutual: true,
-        speculative: !!a.speculative,
+        speculative: looksSpeculative(a),
         curvature: 0,
         width: intensityWidth((a.intensity + b.intensity) / 2, type) + 0.6,
       });
@@ -168,7 +181,7 @@ export function buildGraph(vault: Vault, opts: GraphOptions): { nodes: GraphNode
         type,
         rels: [r],
         mutual: false,
-        speculative: !!r.speculative,
+        speculative: looksSpeculative(r),
         curvature: 0,
         width: intensityWidth(r.intensity, type),
       });

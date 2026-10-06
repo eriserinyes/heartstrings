@@ -30,6 +30,23 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath();
 }
 
+/** A little round "?" badge — marks anything speculative. */
+function drawQuestion(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, color: string, dark: boolean) {
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = dark ? '#2b2440' : '#ffffff';
+  ctx.fill();
+  ctx.setLineDash([]);
+  ctx.lineWidth = Math.max(1, r * 0.22);
+  ctx.strokeStyle = color;
+  ctx.stroke();
+  ctx.font = `700 ${r * 1.45}px "Fredoka", ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = color;
+  ctx.fillText('?', x, y + r * 0.1);
+}
+
 export default function Graph2D(props: GraphRenderProps) {
   const { nodes, links, width, height, selectedId, selectedPair, particles, labels, dark, fitSignal, untangleSignal, autoUntangle } = props;
   const fg = useRef<ForceGraphMethods<GraphNode, GraphLink> | undefined>(undefined);
@@ -124,7 +141,8 @@ export default function Graph2D(props: GraphRenderProps) {
       const dim = hl && !hl.nodes.has(node.id);
       const selected = node.id === selectedId || (selectedPair?.includes(node.id) ?? false);
       ctx.save();
-      ctx.globalAlpha = dim ? 0.22 : 1;
+      // Speculative people are a bit see-through, like they're not quite here yet.
+      ctx.globalAlpha = (dim ? 0.22 : 1) * (p.speculative ? 0.72 : 1);
 
       if (p.isMe) {
         // Warm halo so "you" is always easy to find.
@@ -145,7 +163,9 @@ export default function Graph2D(props: GraphRenderProps) {
       ctx.fill();
       ctx.lineWidth = p.isMe ? 3 : 2;
       ctx.strokeStyle = p.isMe ? '#f4a300' : withAlpha(p.color, 1);
+      if (p.speculative) ctx.setLineDash([2.5, 2.5]);
       ctx.stroke();
+      ctx.setLineDash([]);
 
       if (selected) {
         ctx.beginPath();
@@ -161,11 +181,12 @@ export default function Graph2D(props: GraphRenderProps) {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(p.emoji, x, y + r * 0.07);
+      if (p.speculative) drawQuestion(ctx, x + r * 0.72, y - r * 0.72, r * 0.42, '#9a6bff', dark);
 
       if (labels && p.name) {
         const fs = Math.max(3.5, 12 / scale);
         ctx.font = `800 ${fs}px ${FONT}`;
-        const label = p.isMe ? `👑 ${p.name}` : p.name;
+        const label = p.isMe ? `👑 ${p.name}` : p.speculative ? `🔮 ${p.name}` : p.name;
         const w = ctx.measureText(label).width + fs * 1.1;
         const h = fs * 1.55;
         const ly = y + r + 3 + h / 2;
@@ -204,29 +225,40 @@ export default function Graph2D(props: GraphRenderProps) {
     [hl],
   );
 
-  // …and a heart badge at the midpoint, drawn after everything else so it's never hidden.
+  // …plus midpoint badges, drawn after everything else so they're never hidden:
+  // a heart for bold types, a "?" for anything speculative (tucked beside the
+  // heart when a line is both).
   const drawBadges = useCallback(
     (ctx: CanvasRenderingContext2D) => {
       for (const l of links) {
-        if (l.type.emphasis !== 'bold') continue;
+        const bold = l.type.emphasis === 'bold';
+        if (!bold && !l.speculative) continue;
         const s = l.source as GraphNode;
         const t = l.target as GraphNode;
         if (typeof s !== 'object' || s.x === undefined || t.x === undefined) continue;
         const m = linkMidpoint2D({ x: s.x, y: s.y! }, { x: t.x, y: t.y! }, l.curvature);
+        const on = !hl || hl.links.has(l.id);
         const r = 7.5;
         ctx.save();
-        ctx.globalAlpha = (!hl || hl.links.has(l.id) ? 1 : 0.25) * (l.speculative ? 0.55 : 1);
-        ctx.beginPath();
-        ctx.arc(m.x, m.y, r, 0, Math.PI * 2);
-        ctx.fillStyle = dark ? '#2b2440' : '#ffffff';
-        ctx.fill();
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = l.type.color;
-        ctx.stroke();
-        ctx.font = `${r * 1.15}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(l.type.emoji, m.x, m.y + r * 0.08);
+        if (bold) {
+          ctx.globalAlpha = (on ? 1 : 0.25) * (l.speculative ? 0.6 : 1);
+          ctx.beginPath();
+          ctx.arc(m.x, m.y, r, 0, Math.PI * 2);
+          ctx.fillStyle = dark ? '#2b2440' : '#ffffff';
+          ctx.fill();
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = l.type.color;
+          ctx.stroke();
+          ctx.font = `${r * 1.15}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(l.type.emoji, m.x, m.y + r * 0.08);
+        }
+        if (l.speculative) {
+          ctx.globalAlpha = on ? 1 : 0.25;
+          const q = bold ? 4.2 : 5;
+          drawQuestion(ctx, bold ? m.x + r * 0.85 : m.x, bold ? m.y - r * 0.85 : m.y, q, l.type.color, dark);
+        }
         ctx.restore();
       }
     },

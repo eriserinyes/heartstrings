@@ -98,7 +98,11 @@ function Workspace({ api }: { api: VaultApi }) {
 
   // Everything that *reads* goes through `shown`; writes still use the full vault.
   const shown = useMemo(() => visibleVault(vault, prefs.showSpeculative), [vault, prefs.showSpeculative]);
-  const specCount = useMemo(() => vault.relationships.filter((r) => r.speculative).length, [vault.relationships]);
+  // How much the hidden layer holds (shown on the 🔮 pill as a reminder).
+  const specCount = useMemo(
+    () => vault.relationships.filter((r) => r.speculative).length + vault.people.filter((p) => p.speculative).length,
+    [vault],
+  );
   const hiddenTypes = useMemo(() => new Set(prefs.hiddenTypes), [prefs.hiddenTypes]);
   const graph = useMemo(
     () =>
@@ -111,11 +115,12 @@ function Workspace({ api }: { api: VaultApi }) {
     [shown, hiddenTypes, prefs.mergeMutual, focus],
   );
 
-  // Drop a selection whose person was deleted (incl. via undo).
+  // Drop a selection whose person was deleted (incl. via undo) or just hidden with the 🔮 layer.
   useEffect(() => {
-    if (sel?.kind === 'person' && !vault.people.some((p) => p.id === sel.id)) setSel(null);
-    if (focus && !vault.people.some((p) => p.id === focus.id)) setFocus(null);
-  }, [vault.people, sel, focus]);
+    if (sel?.kind === 'person' && !shown.people.some((p) => p.id === sel.id)) setSel(null);
+    if (sel?.kind === 'pair' && [sel.a, sel.b].some((id) => id && !shown.people.some((p) => p.id === id))) setSel(null);
+    if (focus && !shown.people.some((p) => p.id === focus.id)) setFocus(null);
+  }, [shown.people, sel, focus]);
 
   // Keyboard shortcuts.
   useEffect(() => {
@@ -155,10 +160,10 @@ function Workspace({ api }: { api: VaultApi }) {
   const selectedPair: [Id, Id] | null = sel?.kind === 'pair' && sel.a && sel.b ? [sel.a, sel.b] : null;
   const filteredPeople = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return [...vault.people]
+    return [...shown.people]
       .filter((p) => !q || p.name.toLowerCase().includes(q))
       .sort((a, b) => Number(b.isMe) - Number(a.isMe) || a.name.localeCompare(b.name));
-  }, [vault.people, query]);
+  }, [shown.people, query]);
   const degree = useMemo(() => {
     const m = new Map<Id, number>();
     for (const r of shown.relationships) {
@@ -168,8 +173,8 @@ function Workspace({ api }: { api: VaultApi }) {
     return m;
   }, [shown.relationships]);
 
-  const focusPerson = focus ? vault.people.find((p) => p.id === focus.id) : null;
-  const empty = vault.people.length === 0;
+  const focusPerson = focus ? shown.people.find((p) => p.id === focus.id) : null;
+  const empty = shown.people.length === 0;
 
   return (
     <div className={`app ${prefs.peopleOpen ? 'people-open' : ''} ${sel ? 'inspector-open' : ''}`}>
@@ -225,7 +230,7 @@ function Workspace({ api }: { api: VaultApi }) {
           <button className="btn btn-primary" onClick={() => select({ kind: 'new-person' })}>
             ＋ Person
           </button>
-          <button className="btn" onClick={() => select({ kind: 'pair', a: vault.people.find((p) => p.isMe)?.id ?? null, b: null })} disabled={vault.people.length < 2}>
+          <button className="btn" onClick={() => select({ kind: 'pair', a: vault.people.find((p) => p.isMe)?.id ?? null, b: null })} disabled={shown.people.length < 2}>
             💞 Connect
           </button>
         </div>
@@ -237,7 +242,8 @@ function Workspace({ api }: { api: VaultApi }) {
                 <span className="mini-emoji" style={{ background: p.color }}>
                   {p.emoji}
                 </span>
-                <span className="person-name">
+                <span className={`person-name ${p.speculative ? 'spec' : ''}`} title={p.speculative ? 'Speculative person' : undefined}>
+                  {p.speculative && '🔮 '}
                   {p.name || <i>unnamed</i>}
                   {p.isMe && <span className="me-badge">me</span>}
                 </span>
@@ -246,7 +252,7 @@ function Workspace({ api }: { api: VaultApi }) {
             </li>
           ))}
         </ul>
-        {vault.people.length > 0 && filteredPeople.length === 0 && <p className="hint center">No one by that name.</p>}
+        {shown.people.length > 0 && filteredPeople.length === 0 && <p className="hint center">No one by that name.</p>}
       </aside>
 
       <main className="stage">
@@ -300,7 +306,13 @@ function Workspace({ api }: { api: VaultApi }) {
             ✕
           </button>
           {sel.kind === 'new-person' && (
-            <NewPersonForm vault={vault} dispatch={dispatch} onCreated={(id) => setSel({ kind: 'person', id })} onCancel={() => setSel(null)} />
+            <NewPersonForm
+              vault={shown}
+              dispatch={dispatch}
+              showSpeculative={prefs.showSpeculative}
+              onCreated={(id) => setSel({ kind: 'person', id })}
+              onCancel={() => setSel(null)}
+            />
           )}
           {sel.kind === 'person' && (
             <PersonPanel
@@ -311,12 +323,13 @@ function Workspace({ api }: { api: VaultApi }) {
               onOpenPair={(a, b) => setSel({ kind: 'pair', a, b })}
               onFocus={(id, depth = 1) => setFocus(id ? { id, depth } : null)}
               focused={focus?.id === sel.id}
+              showSpeculative={prefs.showSpeculative}
               onClose={() => setSel(null)}
             />
           )}
           {sel.kind === 'pair' && (
             <PairPanel
-              vault={vault}
+              vault={shown}
               dispatch={dispatch}
               a={sel.a}
               b={sel.b}

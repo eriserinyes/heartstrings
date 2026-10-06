@@ -37,13 +37,16 @@ npm run build      # static build in dist/ — host anywhere, or open via `npm r
 | Thickness               | intensity                                      |
 | Thick + glow + 💖 badge | **BIG** types (primary partner)                 |
 | Thin & faint            | **whisper** types (acquaintance)                |
-| Dotted & ghostly        | 🔮 speculative layer                            |
+| Dotted & ghostly + ?    | 🔮 speculative connection                       |
+| See-through, dashed + ? | 🔮 speculative person                           |
 | Gold halo / ring        | you                                            |
 
 **🔮 Speculative layer:** what-ifs and maybes. Turn it on in the top bar, then flip the pair
-editor to "🔮 Speculative" to add connections that live alongside the real ones. Turn it off
-and they vanish everywhere (map, counts, lists, metamours) as if they never existed. Nothing is
-deleted.
+editor to "🔮 Speculative" to add connections that live alongside the real ones, or mark a
+whole person as speculative (someone you haven't met, or might). Every speculative line gets a
+little **?** in the middle. Turn the layer off and it all vanishes everywhere (map, counts,
+lists, metamours) as if it never existed. Nothing is deleted. Switch a speculative person to
+real and their connections become real with them.
 
 **✂️ Untangling:** in 2D, once the layout settles, Heartstrings rearranges people to cut down
 crossing lines and lines running through people, without ever moving anyone you've pinned.

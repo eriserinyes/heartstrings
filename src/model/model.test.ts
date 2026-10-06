@@ -311,3 +311,33 @@ describe('untangle', () => {
     expect(r.moved.every((id) => movable.has(id))).toBe(true);
   });
 });
+
+describe('speculative people', () => {
+  const v = (): Vault => {
+    const base = vaultWith(['me', 'a', 'maybe'], [rel('1', 'me', 'a', 'friend'), rel('2', 'me', 'maybe', 'crush'), rel('3', 'a', 'maybe', 'romantic')]);
+    base.people[2].speculative = true;
+    return base;
+  };
+
+  it('hiding the layer removes the person and every connection they have', () => {
+    const shown = visibleVault(v(), false);
+    expect(shown.people.map((p) => p.id)).toEqual(['me', 'a']);
+    expect(shown.relationships.map((r) => r.id)).toEqual(['1']);
+    expect(metamours('me', shown)).toEqual([]);
+  });
+
+  it('connections to a speculative person draw as speculative, without changing their stored layer', () => {
+    const g = buildGraph(visibleVault(v(), true), opts);
+    const spec = Object.fromEntries(g.links.map((l) => [l.rels[0].id, l.speculative]));
+    expect(spec).toEqual({ '1': false, '2': true, '3': true });
+    expect(v().relationships.every((r) => !r.speculative)).toBe(true); // so making them real promotes these
+  });
+
+  it('"me" can never be speculative', () => {
+    let x = v();
+    x = vaultReducer(x, { type: 'updatePerson', id: 'maybe', patch: { isMe: true } });
+    expect(x.people.find((p) => p.id === 'maybe')).toMatchObject({ isMe: true, speculative: false });
+    x = vaultReducer(x, { type: 'addPerson', person: { ...person('z', true), speculative: true } });
+    expect(x.people.find((p) => p.id === 'z')!.speculative).toBe(false);
+  });
+});

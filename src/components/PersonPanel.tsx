@@ -10,16 +10,25 @@ interface Common {
   dispatch: (a: Action) => void;
 }
 
-export function NewPersonForm({ vault, dispatch, onCreated, onCancel }: Common & { onCreated: (id: Id) => void; onCancel: () => void }) {
+const SPEC_COLOR = '#b48cff';
+
+export function NewPersonForm({
+  vault,
+  dispatch,
+  onCreated,
+  onCancel,
+  showSpeculative,
+}: Common & { onCreated: (id: Id) => void; onCancel: () => void; showSpeculative: boolean }) {
   const noMe = !vault.people.some((p) => p.isMe);
   const [name, setName] = useState('');
   const [emoji, setEmoji] = useState(() => pick(PERSON_EMOJI));
   const [isMe, setIsMe] = useState(noMe);
+  const [speculative, setSpeculative] = useState(false);
   const [color, setColor] = useState(() => (noMe ? ME_COLOR : pick(PERSON_COLORS)));
 
   function save() {
     if (!name.trim()) return;
-    const person: Person = { id: newId(), name: name.trim(), emoji, color, isMe, notes: '' };
+    const person: Person = { id: newId(), name: name.trim(), emoji, color, isMe, notes: '', speculative: speculative && !isMe };
     dispatch({ type: 'addPerson', person });
     onCreated(person.id);
   }
@@ -45,6 +54,9 @@ export function NewPersonForm({ vault, dispatch, onCreated, onCancel }: Common &
       </div>
       <Swatches value={color} options={[ME_COLOR, ...PERSON_COLORS]} onChange={setColor} />
       <Toggle checked={isMe} onChange={setIsMe} color={ME_COLOR} label="This is me 👑" />
+      {showSpeculative && !isMe && (
+        <Toggle checked={speculative} onChange={setSpeculative} color={SPEC_COLOR} label="🔮 Speculative person (a maybe, a what-if)" />
+      )}
       <div className="row-end">
         <button type="button" className="btn" onClick={onCancel}>
           Cancel
@@ -71,12 +83,14 @@ export function PersonPanel({
   onFocus,
   focused,
   onClose,
+  showSpeculative,
 }: Common & {
   id: Id;
   onOpenPair: (a: Id, b: Id) => void;
   onFocus: (id: Id | null, depth?: number) => void;
   focused: boolean;
   onClose: () => void;
+  showSpeculative: boolean;
 }) {
   const person = vault.people.find((p) => p.id === id);
   const typeById = useMemo(() => new Map(vault.types.map((t) => [t.id, t])), [vault.types]);
@@ -109,6 +123,20 @@ export function PersonPanel({
       </div>
       <Swatches value={person.color} options={[ME_COLOR, ...PERSON_COLORS]} onChange={(color) => set({ color })} />
       <Toggle checked={person.isMe} onChange={(isMe) => set({ isMe })} color={ME_COLOR} label="This is me 👑" />
+      {showSpeculative && !person.isMe && (
+        <Toggle
+          checked={!!person.speculative}
+          onChange={(speculative) => set({ speculative })}
+          color={SPEC_COLOR}
+          label="🔮 Speculative person"
+        />
+      )}
+      {person.speculative && (
+        <p className="hint spec-person-hint">
+          {person.name || 'They'} and all their connections live on the 🔮 layer and vanish when it’s off. Switch this
+          off to make them real, and their connections become real too.
+        </p>
+      )}
 
       <section>
         <h4>Connections</h4>

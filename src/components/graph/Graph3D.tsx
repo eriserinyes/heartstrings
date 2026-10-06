@@ -24,6 +24,28 @@ interface NodeUserData {
   materials: THREE.Material[];
 }
 
+/** A round "?" sprite — marks anything speculative. */
+function questionSprite(size: number, color: string): SpriteText {
+  const q = new SpriteText('?', size, color);
+  q.fontFace = '"Fredoka", "Nunito", ui-rounded, sans-serif';
+  q.fontWeight = '700';
+  q.backgroundColor = 'rgba(255,255,255,0.95)';
+  q.borderColor = color;
+  q.borderWidth = 0.5;
+  q.borderRadius = size;
+  q.padding = [size * 0.28, size * 0.06];
+  const m = q.material as THREE.SpriteMaterial;
+  m.depthTest = false;
+  q.renderOrder = 12;
+  return q;
+}
+
+/** Remember each material's resting opacity so hover-dimming can scale it. */
+function track(materials: THREE.Material[], m: THREE.Material) {
+  m.userData.baseOpacity = m.opacity;
+  materials.push(m);
+}
+
 function makeStarfield(): THREE.Points {
   const n = 900;
   const pos = new Float32Array(n * 3);
@@ -95,14 +117,14 @@ export default function Graph3D(props: GraphRenderProps) {
         color: p.color,
         emissive: new THREE.Color(p.color).multiplyScalar(0.35),
         transparent: true,
-        opacity: 0.95,
+        opacity: p.speculative ? 0.45 : 0.95, // speculative people are ghostly
       });
-      materials.push(sphereMat);
+      track(materials, sphereMat);
       group.add(new THREE.Mesh(new THREE.SphereGeometry(r, 24, 18), sphereMat));
 
       if (p.isMe) {
         const ringMat = new THREE.MeshBasicMaterial({ color: '#ffd166', transparent: true, opacity: 0.9 });
-        materials.push(ringMat);
+        track(materials, ringMat);
         const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 1.45, r * 0.12, 8, 40), ringMat);
         ring.rotation.x = Math.PI / 2.6;
         group.add(ring);
@@ -115,25 +137,34 @@ export default function Graph3D(props: GraphRenderProps) {
       emojiMat.depthTest = false;
       emojiMat.depthWrite = false;
       emoji.renderOrder = 10;
-      materials.push(emoji.material as THREE.Material);
+      track(materials, emoji.material as THREE.Material);
       group.add(emoji);
 
+      if (p.speculative) {
+        const q = questionSprite(r * 0.75, '#9a6bff');
+        q.position.set(r * 0.85, r * 0.85, 0);
+        track(materials, q.material as THREE.Material);
+        group.add(q);
+      }
+
       if (labels && p.name) {
-        const label = new SpriteText(p.isMe ? `👑 ${p.name}` : p.name, 5, '#fff6ff');
+        const label = new SpriteText(p.isMe ? `👑 ${p.name}` : p.speculative ? `🔮 ${p.name}` : p.name, 5, '#fff6ff');
         label.fontFace = '"Nunito", ui-rounded, system-ui, sans-serif';
         label.fontWeight = '800';
         label.backgroundColor = 'rgba(40,28,70,0.72)';
         label.padding = [3, 1.5];
         label.borderRadius = 3;
         label.position.set(0, -(r + 5), 0);
-        materials.push(label.material as THREE.Material);
+        track(materials, label.material as THREE.Material);
         group.add(label);
       }
 
       (group.userData as NodeUserData).materials = materials;
       return group;
     },
-    [labels],
+    // Rebuilt whenever the data changes, so renames / emoji / speculative show up.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [labels, nodes],
   );
 
   // Dim non-highlighted nodes by tweaking material opacity in place —
@@ -144,22 +175,33 @@ export default function Graph3D(props: GraphRenderProps) {
       const mats = (obj?.userData as NodeUserData | undefined)?.materials;
       if (!mats) continue;
       const a = !hl || hl.nodes.has(n.id) ? 1 : 0.18;
-      for (const m of mats) m.opacity = a;
+      for (const m of mats) m.opacity = (m.userData.baseOpacity ?? 1) * a;
     }
   }, [hl, nodes]);
 
   const linkOn = (l: GraphLink) => !hl || hl.links.has(l.id);
 
-  // Bold types (primary partner) carry a heart badge riding the line's midpoint.
+  // Midpoint badges riding the line: a heart for bold types (primary partner),
+  // a "?" for anything speculative (tucked beside the heart when both).
   const buildLinkBadge = useCallback((l: GraphLink) => {
-    if (l.type.emphasis !== 'bold') return null as unknown as THREE.Object3D;
-    const badge = new SpriteText(l.type.emoji, 10);
-    badge.fontFace = '"Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif';
-    const mat = badge.material as THREE.SpriteMaterial;
-    mat.depthTest = false; // always visible, like the 2D badge
-    badge.renderOrder = 11;
-    if (l.speculative) mat.opacity = 0.55;
-    return badge;
+    const bold = l.type.emphasis === 'bold';
+    if (!bold && !l.speculative) return null as unknown as THREE.Object3D;
+    const group = new THREE.Group();
+    if (bold) {
+      const badge = new SpriteText(l.type.emoji, 10);
+      badge.fontFace = '"Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif';
+      const mat = badge.material as THREE.SpriteMaterial;
+      mat.depthTest = false; // always visible, like the 2D badge
+      badge.renderOrder = 11;
+      if (l.speculative) mat.opacity = 0.6;
+      group.add(badge);
+    }
+    if (l.speculative) {
+      const q = questionSprite(bold ? 5 : 6.5, l.type.color);
+      if (bold) q.position.set(6, 6, 0);
+      group.add(q);
+    }
+    return group;
   }, []);
 
   const placeLinkBadge = useCallback(

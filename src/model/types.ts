@@ -16,6 +16,12 @@ export interface Person {
   notes: string;
   /** Optional pinned position so the layout you arranged sticks around. */
   pin?: { x: number; y: number; z?: number };
+  /**
+   * Lives on the speculative layer: someone you haven't met, might date, are
+   * imagining. Hidden with the layer, along with every connection they have.
+   * "Me" is never speculative.
+   */
+  speculative?: boolean;
 }
 
 /** How loudly a type draws on the map. */

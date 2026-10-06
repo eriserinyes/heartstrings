@@ -1303,6 +1303,21 @@ textarea {
   background: transparent;
   opacity: 0.85;
 }
+.person-name.spec {
+  font-style: italic;
+  color: var(--ink-soft);
+}
+.pair-avatar.spec {
+  border-style: dashed;
+  border-color: #b48cff;
+  opacity: 0.8;
+}
+.spec-person-hint {
+  margin-top: -6px;
+  padding: 8px 10px;
+  border: 2px dashed #b48cff;
+  border-radius: 12px;
+}
 .tip-spec {
   font-size: 0.72rem;
   color: #9a6bff;
