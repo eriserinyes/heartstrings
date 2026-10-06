@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ForceGraph2D, { type ForceGraphMethods } from 'react-force-graph-2d';
 import type { GraphLink, GraphNode } from '../../model/graph';
 import type { Id } from '../../model/types';
+import { uniqueEdges, untangle, type Pt } from '../../model/untangle';
 import {
   controlPoint2D,
   highlightSets,
@@ -30,7 +31,7 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 }
 
 export default function Graph2D(props: GraphRenderProps) {
-  const { nodes, links, width, height, selectedId, selectedPair, particles, labels, dark, fitSignal } = props;
+  const { nodes, links, width, height, selectedId, selectedPair, particles, labels, dark, fitSignal, untangleSignal, autoUntangle } = props;
   const fg = useRef<ForceGraphMethods<GraphNode, GraphLink> | undefined>(undefined);
   const [hoverId, setHoverId] = useState<Id | null>(null);
   const fitted = useRef(false);
@@ -55,6 +56,57 @@ export default function Graph2D(props: GraphRenderProps) {
   useEffect(() => {
     if (fitSignal) fg.current?.zoomToFit(500, 70);
   }, [fitSignal]);
+
+  // ---- Crossing reduction -------------------------------------------------
+  // Runs when the simulation comes to rest (once per data change) or on demand.
+  // The engine is stopped by then, so nodes we glide to new spots stay put.
+  const animating = useRef(false);
+  const untangledLinks = useRef<GraphLink[] | null>(null);
+  const runUntangle = useCallback(
+    (onDone?: () => void) => {
+      if (animating.current || nodes.length < 4) return onDone?.();
+      const start = new Map<Id, Pt>();
+      for (const n of nodes) if (n.x !== undefined && n.y !== undefined) start.set(n.id, { x: n.x, y: n.y });
+      const edges = uniqueEdges(
+        links
+          .map((l) => [typeof l.source === 'object' ? l.source.id : l.source, typeof l.target === 'object' ? l.target.id : l.target] as const)
+          .filter(([a, b]) => start.has(a) && start.has(b)),
+      );
+      const movable = new Set(nodes.filter((n) => n.fx === undefined && start.has(n.id)).map((n) => n.id));
+      const r = untangle(start, edges, movable, { minGap: 34 });
+      if (r.conflictsAfter >= r.conflictsBefore || !r.moved.length) return onDone?.();
+      props.onUntangled?.(r.before, r.after);
+
+      // Glide moved nodes to their new spots.
+      const byId = new Map(nodes.map((n) => [n.id, n]));
+      const tracks = r.moved.map((id) => ({ n: byId.get(id)!, from: start.get(id)!, to: r.positions.get(id)! }));
+      animating.current = true;
+      const t0 = performance.now();
+      const step = (now: number) => {
+        const k = Math.min(1, (now - t0) / 550);
+        const e = k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2; // easeInOutQuad
+        for (const { n, from, to } of tracks) {
+          n.x = from.x + (to.x - from.x) * e;
+          n.y = from.y + (to.y - from.y) * e;
+          n.vx = 0;
+          n.vy = 0;
+        }
+        if (k < 1) requestAnimationFrame(step);
+        else {
+          animating.current = false;
+          onDone?.();
+        }
+      };
+      requestAnimationFrame(step);
+    },
+    // props.onUntangled is a stable callback from the parent
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [nodes, links],
+  );
+
+  useEffect(() => {
+    if (untangleSignal) runUntangle(() => fg.current?.zoomToFit(500, 70));
+  }, [untangleSignal, runUntangle]);
 
   // Glide to whoever was just selected (the inspector opening shifts the view).
   useEffect(() => {
@@ -229,11 +281,19 @@ export default function Graph2D(props: GraphRenderProps) {
       }}
       cooldownTicks={120}
       onEngineStop={() => {
-        if (!fitted.current && nodes.length > 1) {
-          fitted.current = true;
-          fg.current?.zoomToFit(500, 70);
-        }
+        const fitOnce = () => {
+          if (!fitted.current && nodes.length > 1) {
+            fitted.current = true;
+            fg.current?.zoomToFit(500, 70);
+          }
+        };
+        if (autoUntangle && untangledLinks.current !== links) {
+          untangledLinks.current = links;
+          runUntangle(fitOnce);
+        } else fitOnce();
       }}
+      // Keep drawing while the engine is idle so untangle glides are visible.
+      autoPauseRedraw={false}
       minZoom={0.2}
       maxZoom={8}
     />

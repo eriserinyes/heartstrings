@@ -58,6 +58,24 @@ function Workspace({ api }: { api: VaultApi }) {
   const [sel, setSel] = useState<Selection>(null);
   const [focus, setFocus] = useState<{ id: Id; depth: number } | null>(null);
   const [fitSignal, setFitSignal] = useState(0);
+  const [untangleSignal, setUntangleSignal] = useState(0);
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 2600);
+    return () => clearTimeout(t);
+  }, [toast]);
+  const onUntangled = useCallback(
+    (before: number, after: number) =>
+      setToast(
+        after === before
+          ? '✂️ Tidied lines away from people'
+          : after === 0
+            ? `✂️ Untangled: ${before} crossing${before === 1 ? '' : 's'} → none!`
+            : `✂️ Untangled: ${before} → ${after} crossings`,
+      ),
+    [],
+  );
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const dark = useDarkMode();
@@ -242,6 +260,9 @@ function Workspace({ api }: { api: VaultApi }) {
           labels={prefs.labels}
           dark={dark}
           fitSignal={fitSignal}
+          untangleSignal={untangleSignal}
+          autoUntangle={prefs.autoUntangle}
+          onUntangled={onUntangled}
           onNodeClick={onNodeClick}
           onLinkClick={onLinkClick}
           onBackgroundClick={onBackgroundClick}
@@ -268,7 +289,9 @@ function Workspace({ api }: { api: VaultApi }) {
           </div>
         )}
 
-        <Legend prefs={prefs} setPrefs={setPrefs} api={api} />
+        {toast && <div className="toast">{toast}</div>}
+
+        <Legend prefs={prefs} setPrefs={setPrefs} api={api} onUntangle={() => setUntangleSignal((s) => s + 1)} />
       </main>
 
       {sel && (
@@ -310,7 +333,17 @@ function Workspace({ api }: { api: VaultApi }) {
   );
 }
 
-function Legend({ prefs, setPrefs, api }: { prefs: Prefs; setPrefs: (p: Partial<Prefs>) => void; api: VaultApi }) {
+function Legend({
+  prefs,
+  setPrefs,
+  api,
+  onUntangle,
+}: {
+  prefs: Prefs;
+  setPrefs: (p: Partial<Prefs>) => void;
+  api: VaultApi;
+  onUntangle: () => void;
+}) {
   // Starts tucked away on small screens so it doesn't cover the graph.
   const [open, setOpen] = useState(() => window.innerWidth > 1100);
   const hidden = new Set(prefs.hiddenTypes);
@@ -363,6 +396,14 @@ function Legend({ prefs, setPrefs, api }: { prefs: Prefs; setPrefs: (p: Partial<
             <Toggle checked={prefs.mergeMutual} onChange={(mergeMutual) => setPrefs({ mergeMutual })} label="merge mutual lines" />
             <Toggle checked={prefs.particles} onChange={(particles) => setPrefs({ particles })} label="sparkles" />
             <Toggle checked={prefs.labels} onChange={(labels) => setPrefs({ labels })} label="names" />
+            {prefs.mode === '2d' && (
+              <>
+                <Toggle checked={prefs.autoUntangle} onChange={(autoUntangle) => setPrefs({ autoUntangle })} label="auto-untangle" />
+                <button className="linklike" onClick={onUntangle} title="Rearrange to reduce crossing lines">
+                  ✂️ untangle now
+                </button>
+              </>
+            )}
             {anyPinned && (
               <button className="linklike" onClick={() => api.dispatch({ type: 'clearPins' })}>
                 📌 unpin everyone

@@ -66,24 +66,48 @@ Relationship { from, to, typeId, intensity 1–5, since?, notes }
 - **Polyamory needs no special support** because nothing restricts how many romantic links a
   person has. The app leans into it with a computed **Metamours** list (partners of your
   partners who aren't your partners; counts romantic / play / queerplatonic as "partner" types).
-- Exact duplicates (same from/to/type) are rejected; edit the existing one instead.
+- Exact duplicates (same from/to/type/layer) are rejected; edit the existing one instead.
 - Exactly one person can be "me"; claiming it moves the crown.
 
 **Relationship types** ship as five built-ins and are fully editable (rename, emoji, colour,
 dashed on/off, delete) plus custom types. I added **Queerplatonic** beyond your list because it's
 common in the same communities and costs nothing to delete.
 
-| Type            | Emoji | Colour   | Style                          |
-| --------------- | ----- | -------- | ------------------------------ |
-| Friendship      | 🌼    | mint     | solid                          |
-| Acquaintance    | 👋    | lavender | **whisper** (thin, faint)      |
-| Crush           | 💘    | pink     | dashed                         |
-| Primary partner | 💖    | magenta  | **BIG** (thick, glow, badge)   |
-| Romantic        | 💞    | rose     | solid                          |
-| Play partner    | 🔥    | violet   | solid                          |
-| Queerplatonic   | 🌈    | peach    | solid                          |
+| Type            | Emoji | Colour   | Direction   | Style                        |
+| --------------- | ----- | -------- | ----------- | ---------------------------- |
+| Friendship      | 🌼    | mint     | one-way ok  | solid                        |
+| Acquaintance    | 👋    | lavender | one-way ok  | **whisper** (thin, faint)    |
+| Crush           | 💘    | pink     | one-way ok  | dashed                       |
+| Primary partner | 💖    | magenta  | shared bond | **BIG** (thick, glow, badge) |
+| Romantic        | 💞    | rose     | shared bond | solid                        |
+| Play partner    | 🔥    | violet   | shared bond | solid                        |
+| Queerplatonic   | 🌈    | peach    | shared bond | solid                        |
 
 Crush is dashed by default to read as "unspoken / tentative".
+
+### Directional vs shared types (redesign, 2026-10-06)
+
+The v1 model made *every* type directional, which was over-literal: a one-way primary
+partnership or a one-way play partnership doesn't mean anything. Now each type has a
+**`directed`** flag:
+
+- **One-way ok** (crush, friendship, acquaintance): unchanged. Two independent records,
+  A→B and B→A; mutual when both exist. Friendship and acquaintance stay directional because
+  "I consider them a friend, they see me as an acquaintance" is real and worth capturing.
+- **Shared bond** (primary, romantic, play, queerplatonic): **one record per pair**; its
+  from/to order carries no meaning. The pair editor shows a single "together" switch, the map
+  draws one arrowless line regardless of the "merge mutual lines" setting, and chips show no
+  arrow. Real and speculative layers still stay separate.
+- **New custom types default to shared**, matching the "most things are mutual" principle.
+  Flip "one-way ok" in Settings for anything directional.
+- **Changing the setting converts data, undoably.** Shared → one-way splits each bond into
+  A→B + B→A (meaning preserved). One-way → shared folds pairs into one bond, keeping the
+  higher intensity, the earlier "since", and both notes joined with " / "; a lone one-way
+  record simply becomes a bond.
+- **Existing vaults are migrated on unlock** the same way: old one-way partner records fold
+  into single bonds. A partner link that was only one-way (e.g. "Alex → Sam: romantic") becomes
+  mutual. That's the intended reading under the new rules, but it is a change in meaning, so if
+  something was deliberately one-way, re-file it as a crush or put it on the speculative layer.
 
 ### Emphasis: BIG / normal / whisper (added after v1)
 
@@ -136,7 +160,8 @@ toggled on and off as if it doesn't exist".
 ## 3. The pair editor is the core UI
 
 Rather than an "add edge" form with dropdowns, selecting two people opens a panel listing
-**every type, each with two switches (A→B, B→A)**. Reasons:
+**every type, with two switches (A→B, B→A) for one-way-ok types and one "together" switch for
+shared bonds**. Reasons:
 - It makes directionality and independence _visible_ — you see at a glance that the crush is
   one-way but the friendship is mutual.
 - It's the same UI for creating and editing, so there's one mental model.
@@ -182,6 +207,37 @@ Dragging a node **pins** it (stored in the encrypted vault as `pin {x,y,z?}`) so
 hand-arranged layout survives reloads. "📌 Unpin" per person or "unpin everyone" in the legend.
 Pins don't go on the undo stack (undoing a drag felt wrong).
 
+## 6b. Untangling: fewer crossing lines (added 2026-10-06)
+
+Asked for: layout settling that prefers arrangements with as few crossing lines as possible.
+
+A force simulation balances springs and repulsion; it has no idea what a crossing is, and
+once settled it often leaves several. So after the 2D simulation comes to rest, a separate
+**untangle pass** (`src/model/untangle.ts`, pure and unit-tested) does a greedy local search:
+
+- **Moves:** swap two people's positions (keeps the overall spacing the simulation found), or
+  relocate one person to a free spot near the centroid of the people they're connected to.
+- **Score:** line crossings **plus lines passing straight through a third person**. I added
+  the second term after the first live test, where a crossing got "fixed" by parking someone
+  on top of another line, which reads just as badly. A move is kept if it lowers the score, or
+  keeps it equal while shortening total line length by 3%+ (so ties drift tidier and the search
+  can't cycle). Each move is scored locally (only lines touching the moved people), which is
+  exact because nothing else changes, and keeps it fast.
+- **Budget:** about 120 ms per run, so it never janks the UI on a big graph; it just stops early.
+- **Pinned people never move.** Your hand-placed layout always wins.
+- Results **glide** into place over about half a second, and a toast reports the change, e.g.
+  "✂️ Untangled: 16 → 1 crossings". In my test graph (9 people, ~16 links) the raw layout had
+  6–16 crossings depending on the random start, and untangling took it to 1 each time.
+- **When it runs:** automatically once per data change after the layout settles (legend toggle
+  "auto-untangle", default on), or on demand with "✂️ untangle now". It runs after the
+  simulation has stopped, so the forces can't immediately undo it. If you drag someone, the
+  simulation reheats and the next settle untangles again.
+- **2D only.** In 3D, whether two lines "cross" depends on the camera angle, so the idea
+  doesn't really apply there. Positions still carry across the 2D⇄3D switch.
+- **Approximations:** curved parallel links are treated as one straight segment between their
+  endpoints. This is a heuristic, not an optimal solver (minimum crossings is NP-hard), so
+  occasionally a crossing that a human could spot a fix for remains. Pin people to taste.
+
 ## 7. State, saving, undo
 
 - A plain reducer over the vault; every change triggers a **debounced (400 ms) re-encrypt + save**.
@@ -204,9 +260,13 @@ included). Dev server for Claude's preview runs on port 5191.
 
 ## 10. Testing done
 
-- 21 unit tests (13 at v1, 8 added with the new types and speculative layer): crypto round-trip and no plaintext in ciphertext, wrong passphrase rejected,
+- 32 unit tests (13 at v1, 8 with the new types and speculative layer, 11 with the
+  directionality redesign and untangling): crypto round-trip and no plaintext in ciphertext, wrong passphrase rejected,
   unique IV per save, mutual merging, parallel-link fan-out, type filtering and dangling-link
-  removal, focus neighbourhoods, metamours, reducer invariants.
+  removal, focus neighbourhoods, metamours, reducer invariants; plus the speculative layer, migration of new built-ins, shared bonds drawing as one line,
+  migration folding of old partner records, reversed-duplicate rejection, round-tripping a type
+  between one-way and shared; crossing detection, untangling a bow-tie, moving a person off a
+  line, and pinned nodes never moving.
 - Manual run in the preview browser with throwaway data: create vault → add people → pair
   editor → 2D render → 3D render → node and link clicks in both → wrong and right passphrase →
   focus mode → remove + undo → mobile layout (drawer + bottom sheet) → light and dark themes.

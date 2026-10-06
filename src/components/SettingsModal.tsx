@@ -49,14 +49,16 @@ function TypesTab({ vault, dispatch }: { vault: Vault; dispatch: (a: Action) => 
   const add = () =>
     dispatch({
       type: 'upsertType',
-      relType: { id: newId(), label: 'New type', emoji: '✨', color: TYPE_COLORS[vault.types.length % TYPE_COLORS.length], dashed: false, emphasis: 'normal', builtIn: false },
+      relType: { id: newId(), label: 'New type', emoji: '✨', color: TYPE_COLORS[vault.types.length % TYPE_COLORS.length], dashed: false, emphasis: 'normal', directed: false, builtIn: false },
     });
 
   return (
     <div className="types-tab">
       <p className="hint">
         Rename, recolour, or invent your own kinds of connection. Every type is directional and independent. “BIG” types
-        draw thick and glowing with a badge on the line; “whisper” types draw thin and faint.
+        draw thick and glowing with a badge on the line; “whisper” types draw thin and faint. Types marked
+        “one-way ok” (like crushes) have a separate switch per direction; the rest are always a shared,
+        mutual bond.
       </p>
       {vault.types.map((t) => (
         <TypeEditor key={t.id} t={t} count={counts.get(t.id) ?? 0} dispatch={dispatch} />
@@ -80,6 +82,9 @@ function TypeEditor({ t, count, dispatch }: { t: RelationshipType; count: number
           <option value="normal">normal</option>
           <option value="bold">BIG 💖</option>
         </select>
+        <span title={t.directed ? 'Each direction is separate (A→B, B→A). Turning this off merges them into one shared bond.' : 'One shared bond. Turning this on splits each bond into A→B and B→A.'}>
+          <Toggle checked={t.directed} onChange={(directed) => set({ directed })} label="one-way ok" color={t.color} />
+        </span>
         <Toggle checked={t.dashed} onChange={(dashed) => set({ dashed })} label="dashed" color={t.color} />
         <span className="count" title="connections of this type">
           {count}

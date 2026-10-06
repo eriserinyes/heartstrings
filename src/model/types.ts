@@ -30,13 +30,20 @@ export interface RelationshipType {
   dashed: boolean;
   /** bold = thick glowing line with a heart badge; subtle = thin and faint. */
   emphasis: Emphasis;
+  /**
+   * Directional types (crush, friendship…) are two independent one-way
+   * connections. Non-directional types (partners) only make sense as a shared
+   * bond, so each is a single record whose from/to order carries no meaning.
+   */
+  directed: boolean;
   builtIn: boolean;
 }
 
 /**
- * A single *directed* connection of one type: "from feels <type> toward to".
- * Mutuality is not stored — it's derived when both directions exist.
- * Multiple types between the same pair coexist independently.
+ * One connection of one type. For a directional type it means "from feels
+ * <type> toward to", and mutuality is derived when both directions exist.
+ * For a non-directional type it's a single shared bond and from/to order is
+ * irrelevant. Multiple types between the same pair coexist independently.
  */
 export interface Relationship {
   id: Id;

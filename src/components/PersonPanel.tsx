@@ -135,8 +135,15 @@ export function PersonPanel({
                       const match = (r: Relationship) => r.typeId === tid && !!r.speculative === spec;
                       const o = out.some(match);
                       const i = inc.some(match);
-                      const arrow = o && i ? '⇄' : o ? '→' : '←';
-                      const dir = o && i ? `mutual ${t.label}` : o ? `${person.name} → ${other.name}` : `${other.name} → ${person.name}`;
+                      // Shared bonds have no direction to show.
+                      const arrow = !t.directed ? '' : o && i ? '⇄' : o ? '→' : '←';
+                      const dir = !t.directed
+                        ? `${t.label} (together)`
+                        : o && i
+                          ? `mutual ${t.label}`
+                          : o
+                            ? `${person.name} → ${other.name}`
+                            : `${other.name} → ${person.name}`;
                       return (
                         <span
                           key={key}
@@ -146,7 +153,7 @@ export function PersonPanel({
                         >
                           {spec && '🔮'}
                           {t.emoji}
-                          <b>{arrow}</b>
+                          {arrow && <b>{arrow}</b>}
                         </span>
                       );
                     })}

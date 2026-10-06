@@ -1,13 +1,13 @@
 import type { RelationshipType, Vault } from './types';
 
 export const DEFAULT_TYPES: RelationshipType[] = [
-  { id: 'friend', label: 'Friendship', emoji: '🌼', color: '#3fbfa8', dashed: false, emphasis: 'normal', builtIn: true },
-  { id: 'acquaintance', label: 'Acquaintance', emoji: '👋', color: '#a29bc4', dashed: false, emphasis: 'subtle', builtIn: true },
-  { id: 'crush', label: 'Crush', emoji: '💘', color: '#ff7eb6', dashed: true, emphasis: 'normal', builtIn: true },
-  { id: 'primary', label: 'Primary partner', emoji: '💖', color: '#ff1f8f', dashed: false, emphasis: 'bold', builtIn: true },
-  { id: 'romantic', label: 'Romantic', emoji: '💞', color: '#ff4f6d', dashed: false, emphasis: 'normal', builtIn: true },
-  { id: 'play', label: 'Play partner', emoji: '🔥', color: '#9a6bff', dashed: false, emphasis: 'normal', builtIn: true },
-  { id: 'qpr', label: 'Queerplatonic', emoji: '🌈', color: '#ffa94d', dashed: false, emphasis: 'normal', builtIn: true },
+  { id: 'friend', label: 'Friendship', emoji: '🌼', color: '#3fbfa8', dashed: false, emphasis: 'normal', directed: true, builtIn: true },
+  { id: 'acquaintance', label: 'Acquaintance', emoji: '👋', color: '#a29bc4', dashed: false, emphasis: 'subtle', directed: true, builtIn: true },
+  { id: 'crush', label: 'Crush', emoji: '💘', color: '#ff7eb6', dashed: true, emphasis: 'normal', directed: true, builtIn: true },
+  { id: 'primary', label: 'Primary partner', emoji: '💖', color: '#ff1f8f', dashed: false, emphasis: 'bold', directed: false, builtIn: true },
+  { id: 'romantic', label: 'Romantic', emoji: '💞', color: '#ff4f6d', dashed: false, emphasis: 'normal', directed: false, builtIn: true },
+  { id: 'play', label: 'Play partner', emoji: '🔥', color: '#9a6bff', dashed: false, emphasis: 'normal', directed: false, builtIn: true },
+  { id: 'qpr', label: 'Queerplatonic', emoji: '🌈', color: '#ffa94d', dashed: false, emphasis: 'normal', directed: false, builtIn: true },
 ];
 
 /** The built-ins that shipped in v1, before seededTypeIds existed. */

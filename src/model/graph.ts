@@ -8,6 +8,8 @@ export interface GraphNode {
   x?: number;
   y?: number;
   z?: number;
+  vx?: number;
+  vy?: number;
   fx?: number;
   fy?: number;
   fz?: number;
@@ -48,8 +50,12 @@ export function intensityWidth(intensity: number, type?: RelationshipType): numb
   return w;
 }
 
-/** True when `rel` has a counterpart of the same type, on the same layer, pointing back. */
-export function isMutual(rel: Relationship, all: Relationship[]): boolean {
+/**
+ * True when `rel` is mutual: its type is non-directional, or a counterpart of
+ * the same type on the same layer points back.
+ */
+export function isMutual(rel: Relationship, all: Relationship[], type?: RelationshipType): boolean {
+  if (type && !type.directed) return true;
   return all.some(
     (r) => r.typeId === rel.typeId && r.from === rel.to && r.to === rel.from && !!r.speculative === !!rel.speculative,
   );
@@ -110,6 +116,23 @@ export function buildGraph(vault: Vault, opts: GraphOptions): { nodes: GraphNode
   for (const r of rels) {
     if (consumed.has(r.id)) continue;
     const type = typeById.get(r.typeId)!;
+    if (!type.directed) {
+      // A shared bond: one arrowless line, oriented canonically for stable curvature.
+      consumed.add(r.id);
+      const [s, t] = r.from < r.to ? [r.from, r.to] : [r.to, r.from];
+      links.push({
+        id: `u:${r.id}`,
+        source: s,
+        target: t,
+        type,
+        rels: [r],
+        mutual: true,
+        speculative: !!r.speculative,
+        curvature: 0,
+        width: intensityWidth(r.intensity, type) + 0.6,
+      });
+      continue;
+    }
     const back = opts.mergeMutual
       ? rels.find(
           (o) =>

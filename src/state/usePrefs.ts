@@ -14,6 +14,8 @@ export interface Prefs {
   autoLockMinutes: number;
   /** Show the 🔮 speculative layer. Off = it behaves as if it doesn't exist. */
   showSpeculative: boolean;
+  /** Rearrange to minimise crossing lines whenever the 2D layout settles. */
+  autoUntangle: boolean;
 }
 
 const KEY = 'heartstrings.prefs.v1';
@@ -27,6 +29,7 @@ const DEFAULTS: Prefs = {
   peopleOpen: true,
   autoLockMinutes: 15,
   showSpeculative: true,
+  autoUntangle: true,
 };
 
 function load(): Prefs {

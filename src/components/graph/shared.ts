@@ -13,6 +13,11 @@ export interface GraphRenderProps {
   dark: boolean;
   /** Bump to ask the view to zoom-to-fit. */
   fitSignal: number;
+  /** Bump to ask the 2D view to untangle crossings now. */
+  untangleSignal: number;
+  /** Untangle automatically whenever the layout settles after a change (2D). */
+  autoUntangle: boolean;
+  onUntangled?: (before: number, after: number) => void;
   onNodeClick: (node: GraphNode, shift: boolean) => void;
   onLinkClick: (link: GraphLink) => void;
   onBackgroundClick: () => void;
@@ -73,7 +78,7 @@ export function withAlpha(hex: string, alpha: number): string {
 export function linkTooltip(l: GraphLink, nameOf: (id: Id) => string): string {
   const s = nameOf(endId(l.source));
   const t = nameOf(endId(l.target));
-  const arrow = l.mutual ? '⇄' : '→';
+  const arrow = !l.type.directed ? '&' : l.mutual ? '⇄' : '→';
   const spec = l.speculative ? '<div class="tip-spec">🔮 speculative</div>' : '';
   return `<div class="tip">${spec}<b>${l.type.emoji} ${l.type.label}</b><br/>${escapeHtml(s)} ${arrow} ${escapeHtml(t)}</div>`;
 }

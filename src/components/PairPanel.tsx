@@ -6,8 +6,9 @@ import { Hearts, Toggle } from './ui';
 
 /**
  * The heart of the app: for a pair of people, every relationship type gets
- * two independent switches — A→B and B→A. A crush can be one-way, a
- * friendship mutual, and a play-partnership can sit alongside either.
+ * its switches. Directional types (crush, friendship…) get two independent
+ * ones, A→B and B→A; partner types get a single "together" switch, because a
+ * one-way primary partnership isn't a thing.
  */
 export default function PairPanel({
   vault,
@@ -117,8 +118,9 @@ function TypeRow({
 }) {
   const find = (from: Person, to: Person) =>
     vault.relationships.find((r) => r.typeId === type.id && r.from === from.id && r.to === to.id && !!r.speculative === speculative);
-  const ab = find(a, b);
-  const ba = find(b, a);
+  // A shared bond may be stored either way round; treat it as "ab".
+  const ab = type.directed ? find(a, b) : (find(a, b) ?? find(b, a));
+  const ba = type.directed ? find(b, a) : undefined;
   const [open, setOpen] = useState(false);
   const active = !!(ab || ba);
 
@@ -135,7 +137,17 @@ function TypeRow({
     }
   };
 
-  const status = ab && ba ? 'mutual 💫' : ab ? `${a.name} → ${b.name}` : ba ? `${b.name} → ${a.name}` : '';
+  const status = !type.directed
+    ? ab
+      ? 'together 💫'
+      : ''
+    : ab && ba
+      ? 'mutual 💫'
+      : ab
+        ? `${a.name} → ${b.name}`
+        : ba
+          ? `${b.name} → ${a.name}`
+          : '';
 
   return (
     <div className={`type-row ${active ? 'active' : ''} emph-${type.emphasis}`} style={{ '--c': type.color } as React.CSSProperties}>
@@ -148,8 +160,14 @@ function TypeRow({
           </span>
         </span>
         <div className="dir-toggles">
-          <Toggle checked={!!ab} onChange={(on) => toggle(a, b, ab, on)} color={type.color} label={<DirLabel from={a} to={b} />} />
-          <Toggle checked={!!ba} onChange={(on) => toggle(b, a, ba, on)} color={type.color} label={<DirLabel from={b} to={a} />} />
+          {type.directed ? (
+            <>
+              <Toggle checked={!!ab} onChange={(on) => toggle(a, b, ab, on)} color={type.color} label={<DirLabel from={a} to={b} />} />
+              <Toggle checked={!!ba} onChange={(on) => toggle(b, a, ba, on)} color={type.color} label={<DirLabel from={b} to={a} />} />
+            </>
+          ) : (
+            <Toggle checked={!!ab} onChange={(on) => toggle(a, b, ab, on)} color={type.color} label={<DirLabel from={a} to={b} both />} />
+          )}
         </div>
         {active && (
           <button className="icon-btn" onClick={() => setOpen((o) => !o)} aria-label="Details" title="Details">
@@ -159,7 +177,7 @@ function TypeRow({
       </div>
       {active && open && (
         <div className="type-row-detail">
-          {ab && <RelDetail rel={ab} from={a} to={b} color={type.color} dispatch={dispatch} />}
+          {ab && <RelDetail rel={ab} from={a} to={b} both={!type.directed} color={type.color} dispatch={dispatch} />}
           {ba && <RelDetail rel={ba} from={b} to={a} color={type.color} dispatch={dispatch} />}
         </div>
       )}
@@ -167,23 +185,37 @@ function TypeRow({
   );
 }
 
-function DirLabel({ from, to }: { from: Person; to: Person }) {
+function DirLabel({ from, to, both = false }: { from: Person; to: Person; both?: boolean }) {
   return (
-    <span className="dir-label" title={`${from.name} → ${to.name}`}>
+    <span className="dir-label" title={both ? `${from.name} & ${to.name}, together` : `${from.name} → ${to.name}`}>
       {from.emoji}
-      <i>→</i>
+      <i>{both ? '⇄' : '→'}</i>
       {to.emoji}
     </span>
   );
 }
 
-function RelDetail({ rel, from, to, color, dispatch }: { rel: Relationship; from: Person; to: Person; color: string; dispatch: (x: Action) => void }) {
+function RelDetail({
+  rel,
+  from,
+  to,
+  both = false,
+  color,
+  dispatch,
+}: {
+  rel: Relationship;
+  from: Person;
+  to: Person;
+  both?: boolean;
+  color: string;
+  dispatch: (x: Action) => void;
+}) {
   const set = (patch: Partial<Relationship>) => dispatch({ type: 'updateRelationship', id: rel.id, patch });
   return (
     <div className="rel-detail">
       <div className="rel-detail-head">
         <b>
-          {from.name} → {to.name}
+          {from.name} {both ? '&' : '→'} {to.name}
         </b>
         <Hearts value={rel.intensity} onChange={(intensity) => set({ intensity })} color={color} />
       </div>

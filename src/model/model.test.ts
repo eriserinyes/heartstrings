@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { createKey, seal, unseal, WrongPassphraseError } from '../crypto/vault';
-import { normaliseVault, vaultReducer } from '../state/reducer';
+import { collapseUndirected, normaliseVault, vaultReducer } from '../state/reducer';
 import { DEFAULT_TYPES, emptyVault } from './defaults';
 import { buildGraph, metamours, neighbourhood, visibleVault } from './graph';
+import { countCrossings, countOverlaps, segmentsCross, uniqueEdges, untangle, type Pt } from './untangle';
 import type { Person, Relationship, Vault } from './types';
 
 const person = (id: string, isMe = false): Person => ({ id, name: `P${id}`, emoji: '🐸', color: '#fff', isMe, notes: '' });
@@ -179,8 +180,8 @@ describe('speculative layer', () => {
   const v = vaultWith(
     ['a', 'b', 'c'],
     [
-      rel('1', 'a', 'b', 'romantic'),
-      rel('2', 'b', 'a', 'romantic', 3, true), // speculative return — must NOT make the real one mutual
+      rel('1', 'a', 'b', 'crush'),
+      rel('2', 'b', 'a', 'crush', 3, true), // speculative return — must NOT make the real one mutual
       rel('3', 'a', 'c', 'crush', 3, true),
     ],
   );
@@ -207,5 +208,106 @@ describe('speculative layer', () => {
   it('old relationships default to the real layer', () => {
     const n = normaliseVault({ people: [], types: [], relationships: [{ id: 'r', from: 'a', to: 'b', typeId: 'friend' }] });
     expect(n.relationships[0].speculative).toBe(false);
+  });
+});
+
+describe('directional vs shared types', () => {
+  it('partner types are shared bonds: one arrowless line even when mergeMutual is off', () => {
+    const v = vaultWith(['a', 'b'], [rel('1', 'b', 'a', 'primary')]);
+    const [l] = buildGraph(v, { ...opts, mergeMutual: false }).links;
+    expect(l.mutual).toBe(true);
+    expect(l.source).toBe('a'); // canonical orientation
+  });
+
+  it('folds old one-way partner records into single bonds on load', () => {
+    const v = normaliseVault({
+      people: [],
+      types: DEFAULT_TYPES,
+      relationships: [
+        { ...rel('1', 'a', 'b', 'romantic', 2), notes: 'x', since: '2024-05-01' },
+        { ...rel('2', 'b', 'a', 'romantic', 5), notes: 'y', since: '2023-01-01' },
+        rel('3', 'a', 'c', 'play'), // lone one-way → just becomes mutual
+        rel('4', 'a', 'b', 'crush'),
+        rel('5', 'b', 'a', 'crush'), // directional: both kept
+      ],
+    });
+    const romantic = v.relationships.filter((r) => r.typeId === 'romantic');
+    expect(romantic).toHaveLength(1);
+    expect(romantic[0]).toMatchObject({ intensity: 5, since: '2023-01-01', notes: 'x / y' });
+    expect(v.relationships.filter((r) => r.typeId === 'play')).toHaveLength(1);
+    expect(v.relationships.filter((r) => r.typeId === 'crush')).toHaveLength(2);
+  });
+
+  it('keeps real and speculative bonds separate when folding', () => {
+    const out = collapseUndirected([rel('1', 'a', 'b', 'romantic'), rel('2', 'b', 'a', 'romantic', 3, true)], new Set(['romantic']));
+    expect(out).toHaveLength(2);
+  });
+
+  it('rejects a reversed duplicate of a shared bond', () => {
+    let v = vaultWith(['a', 'b'], [rel('1', 'a', 'b', 'romantic')]);
+    v = vaultReducer(v, { type: 'addRelationships', rels: [rel('2', 'b', 'a', 'romantic')] });
+    expect(v.relationships).toHaveLength(1);
+  });
+
+  it('flipping a type to one-way splits bonds; flipping back merges them', () => {
+    let v = vaultWith(['a', 'b'], [rel('1', 'a', 'b', 'romantic', 4)]);
+    const romantic = v.types.find((t) => t.id === 'romantic')!;
+    v = vaultReducer(v, { type: 'upsertType', relType: { ...romantic, directed: true } });
+    expect(v.relationships.map((r) => `${r.from}>${r.to}:${r.intensity}`).sort()).toEqual(['a>b:4', 'b>a:4']);
+    v = vaultReducer(v, { type: 'upsertType', relType: { ...romantic, directed: false } });
+    expect(v.relationships).toHaveLength(1);
+  });
+
+  it('only crush, friendship and acquaintance are one-way by default', () => {
+    expect(DEFAULT_TYPES.filter((t) => t.directed).map((t) => t.id).sort()).toEqual(['acquaintance', 'crush', 'friend']);
+  });
+});
+
+describe('untangle', () => {
+  const P = (x: number, y: number): Pt => ({ x, y });
+
+  it('detects proper crossings only', () => {
+    expect(segmentsCross(P(0, 0), P(10, 10), P(0, 10), P(10, 0))).toBe(true);
+    expect(segmentsCross(P(0, 0), P(10, 0), P(0, 5), P(10, 5))).toBe(false);
+    expect(segmentsCross(P(0, 0), P(10, 0), P(10, 0), P(10, 10))).toBe(false); // shared endpoint
+  });
+
+  it('dedupes parallel and reversed links', () => {
+    expect(uniqueEdges([['a', 'b'], ['b', 'a'], ['a', 'b'], ['a', 'a']])).toEqual([['a', 'b']]);
+  });
+
+  it('uncrosses a twisted square', () => {
+    // Cycle a-b-c-d drawn as a bow-tie: a-b and c-d cross.
+    const pos = new Map([['a', P(0, 0)], ['b', P(100, 100)], ['c', P(100, 0)], ['d', P(0, 100)]]);
+    const edges = uniqueEdges([['a', 'b'], ['b', 'c'], ['c', 'd'], ['d', 'a']]);
+    expect(countCrossings(pos, edges)).toBe(1);
+    const r = untangle(pos, edges, new Set(['a', 'b', 'c', 'd']), { maxMs: 1000, random: () => 0 });
+    expect(r.after).toBe(0);
+  });
+
+  it('moves a person off a line that runs through them', () => {
+    // c sits on the a–b line; c is connected to d off to the side.
+    const pos = new Map([['a', P(0, 0)], ['b', P(200, 0)], ['c', P(100, 2)], ['d', P(100, 150)]]);
+    const edges = uniqueEdges([['a', 'b'], ['c', 'd']]);
+    expect(countOverlaps(pos, edges, 15)).toBe(1);
+    const r = untangle(pos, edges, new Set(['c']), { maxMs: 1000, minGap: 30, random: () => 0 });
+    expect(countOverlaps(r.positions, edges, 15)).toBe(0);
+  });
+
+  it('never moves pinned nodes and never makes things worse', () => {
+    let seed = 7;
+    const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const ids = Array.from({ length: 14 }, (_, i) => `n${i}`);
+    const pos = new Map(ids.map((id) => [id, P(random() * 400, random() * 400)]));
+    const pairs: [string, string][] = [];
+    for (let i = 0; i < 26; i++) pairs.push([ids[Math.floor(random() * 14)], ids[Math.floor(random() * 14)]]);
+    const edges = uniqueEdges(pairs);
+    const movable = new Set(ids.slice(2)); // n0, n1 pinned
+    const r = untangle(pos, edges, movable, { maxMs: 2000, random });
+    expect(r.after).toBeLessThanOrEqual(r.before);
+    expect(r.conflictsAfter).toBeLessThanOrEqual(r.conflictsBefore);
+    expect(r.positions.get('n0')).toEqual(pos.get('n0'));
+    expect(r.positions.get('n1')).toEqual(pos.get('n1'));
+    expect(r.moved.every((id) => movable.has(id))).toBe(true);
   });
 });
