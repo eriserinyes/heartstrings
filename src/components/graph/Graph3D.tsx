@@ -85,6 +85,7 @@ export default function Graph3D(props: GraphRenderProps) {
     [hoverId, selectedId, selectedPair, links],
   );
 
+  // Re-applied on data changes so a not-yet-ready first mount can't leave d3's defaults.
   useEffect(() => {
     const g = fg.current;
     if (!g) return;
@@ -92,7 +93,7 @@ export default function Graph3D(props: GraphRenderProps) {
     g.d3Force('link')?.distance((l: GraphLink) => linkDistance(l) * 0.8);
     const scene = g.scene();
     if (!scene.getObjectByName('heartstrings-stars')) scene.add(makeStarfield());
-  }, []);
+  }, [data]);
 
   useEffect(() => {
     if (fitSignal) fg.current?.zoomToFit(600, 60);
@@ -157,6 +158,9 @@ export default function Graph3D(props: GraphRenderProps) {
         label.padding = [3, 1.5];
         label.borderRadius = 3;
         label.position.set(0, -(r + 5), 0);
+        // Names always draw on top, above arrow cones and badges.
+        (label.material as THREE.SpriteMaterial).depthTest = false;
+        label.renderOrder = 13;
         track(materials, label.material as THREE.Material);
         group.add(label);
       }

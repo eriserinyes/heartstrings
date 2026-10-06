@@ -246,6 +246,13 @@ once settled it often leaves several. So after the 2D simulation comes to rest, 
 - Results **glide** into place over about half a second, and a toast reports the change, e.g.
   "✂️ Untangled: 16 → 1 crossings". In my test graph (9 people, ~16 links) the raw layout had
   6–16 crossings depending on the random start, and untangling took it to 1 each time.
+- **It doesn't move your camera** (fixed 2026-10-06). "Untangle now" used to zoom-to-fit
+  afterwards, which threw you all the way out. Now it notes who's on screen (centre inside
+  the canvas) before untangling. Afterwards it does nothing if they're all still visible.
+  Otherwise it pans the minimum distance to bring them back, and zooms out only if panning
+  alone can't fit them, and only as far as needed (`viewToShow`, unit-tested). It never zooms
+  in. People who were already off-screen aren't chased. The only remaining automatic fit is the
+  first one when the map appears, since there's no previous view to preserve then.
 - **When it runs:** automatically once per data change after the layout settles (legend toggle
   "auto-untangle", default on), or on demand with "✂️ untangle now". It runs after the
   simulation has stopped, so the forces can't immediately undo it. If you drag someone, the
@@ -317,6 +324,15 @@ two letters. A test checks that each palette has no duplicates and every entry i
   like 2D/3D mode, since they hold no personal data.
 - Fixed a 3D glitch where the ? badge's corners tore (corner radius larger than half the
   sprite's height).
+
+**Layering & a layout bug (2026-10-06):**
+- **Name labels draw on top** of arrows and badges. In 2D they moved out of the node renderer
+  into the final overlay pass, so the order is: lines → people → arrows → ?/💖 badges →
+  names. In 3D, label sprites skip the depth test and render last.
+- **Fixed people piling up in a heap.** The custom forces (stronger repulsion, longer springs)
+  were applied once on mount. If the graph wasn't ready at that instant, they silently didn't
+  apply, and d3's cramped defaults left everyone overlapping. That's also what made "fit" zoom
+  in absurdly far: it was fitting a pile. The forces are now re-applied on every data change.
 
 ## 11. Ideas for v2 (not built)
 

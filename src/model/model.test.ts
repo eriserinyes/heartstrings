@@ -4,6 +4,7 @@ import { collapseUndirected, normaliseVault, vaultReducer } from '../state/reduc
 import { DEFAULT_TYPES, emptyVault } from './defaults';
 import { buildGraph, metamours, neighbourhood, visibleVault } from './graph';
 import { PERSON_EMOJI_GROUPS, TYPE_EMOJI_GROUPS } from './emoji';
+import { viewToShow } from '../components/graph/shared';
 import { countCrossings, countOverlaps, segmentsCross, uniqueEdges, untangle, type Pt } from './untangle';
 import type { Person, Relationship, Vault } from './types';
 
@@ -355,5 +356,31 @@ describe('emoji palettes', () => {
   it('every built-in type emoji is offered in the type picker', () => {
     const all = new Set(TYPE_EMOJI_GROUPS.flatMap((g) => g.emoji));
     for (const t of DEFAULT_TYPES) expect(all.has(t.emoji)).toBe(true);
+  });
+});
+
+describe('viewToShow (keep people in view after untangling)', () => {
+  const view = { k: 2, x: 0, y: 0 }; // 800×600 canvas → visible graph box ±188 × ±138 after 24px padding
+
+  it('leaves the view alone when everyone is still visible', () => {
+    expect(viewToShow(view, { minX: -100, minY: -100, maxX: 100, maxY: 100 }, 800, 600)).toBeNull();
+  });
+
+  it('pans just enough without zooming when the box fits at this zoom', () => {
+    const next = viewToShow(view, { minX: 100, minY: -50, maxX: 250, maxY: 50 }, 800, 600)!;
+    expect(next.k).toBe(2);
+    expect(next.x).toBeCloseTo(250 - 188);
+    expect(next.y).toBe(0);
+  });
+
+  it('zooms out only as far as needed when the box is too big', () => {
+    const next = viewToShow(view, { minX: -300, minY: -50, maxX: 300, maxY: 50 }, 800, 600)!;
+    expect(next.k).toBeCloseTo(752 / 600);
+    expect(next.k).toBeLessThan(2);
+  });
+
+  it('never zooms in', () => {
+    const next = viewToShow({ k: 0.5, x: 0, y: 0 }, { minX: 1000, minY: 0, maxX: 1010, maxY: 10 }, 800, 600)!;
+    expect(next.k).toBe(0.5);
   });
 });

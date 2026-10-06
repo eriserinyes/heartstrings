@@ -153,3 +153,33 @@ export function arrowTipParam(s: XY, t: XY, curvature: number, gap: number): num
   }
   return lo;
 }
+
+export interface View {
+  k: number;
+  x: number;
+  y: number;
+}
+
+/**
+ * The gentlest view change that shows a graph-space box: null if it's already
+ * inside the viewport (minus padding); otherwise the smallest pan, plus a
+ * zoom-out only when the box can't fit at the current zoom. Never zooms in.
+ */
+export function viewToShow(
+  view: View,
+  box: { minX: number; minY: number; maxX: number; maxY: number },
+  width: number,
+  height: number,
+  pad = 24,
+): View | null {
+  const halfW = (width / 2 - pad) / view.k;
+  const halfH = (height / 2 - pad) / view.k;
+  if (box.minX >= view.x - halfW && box.maxX <= view.x + halfW && box.minY >= view.y - halfH && box.maxY <= view.y + halfH) {
+    return null;
+  }
+  const k = Math.min(view.k, (width - 2 * pad) / (box.maxX - box.minX), (height - 2 * pad) / (box.maxY - box.minY));
+  const hw = (width / 2 - pad) / k;
+  const hh = (height / 2 - pad) / k;
+  const clamp = (v: number, lo: number, hi: number) => (lo > hi ? (lo + hi) / 2 : Math.min(Math.max(v, lo), hi));
+  return { k, x: clamp(view.x, box.maxX - hw, box.minX + hw), y: clamp(view.y, box.maxY - hh, box.minY + hh) };
+}

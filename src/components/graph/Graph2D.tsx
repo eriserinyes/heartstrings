@@ -16,6 +16,7 @@ import {
   nodeVal,
   pointOnLink2D,
   REL_SIZE,
+  viewToShow,
   withAlpha,
   type GraphRenderProps,
 } from './shared';
@@ -97,11 +98,13 @@ export default function Graph2D(props: GraphRenderProps) {
     [hoverId, selectedId, selectedPair, links],
   );
 
+  // Gentler forces than the default: friend groups need room to breathe.
+  // Re-applied on every data change (not just on mount) so a mount where the
+  // graph wasn't ready yet can't leave d3's cramped defaults in place.
   useEffect(() => {
-    // Gentler forces than the default: friend groups need room to breathe.
     fg.current?.d3Force('charge')?.strength(-300);
     fg.current?.d3Force('link')?.distance(linkDistance);
-  }, []);
+  }, [data]);
 
   useEffect(() => {
     if (fitSignal) fg.current?.zoomToFit(500, 70);
@@ -111,6 +114,40 @@ export default function Graph2D(props: GraphRenderProps) {
   // Runs when the simulation comes to rest (once per data change) or on demand.
   // The engine is stopped by then, so nodes we glide to new spots stay put.
   const animating = useRef(false);
+
+  /**
+   * After untangling, keep the people who were on screen on screen, without
+   * touching the zoom unless we must: do nothing if they're all still visible,
+   * otherwise pan just far enough, and zoom out only if panning can't fit them.
+   */
+  const keepInView = useCallback(
+    (ids: Id[]) => {
+      const g = fg.current;
+      if (!g || !ids.length) return;
+      const byId = new Map(nodes.map((n) => [n.id, n]));
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (const id of ids) {
+        const n = byId.get(id);
+        if (!n || n.x === undefined || n.y === undefined) continue;
+        const r = nodeRadius(n) + 18; // leave room for the name pill too
+        minX = Math.min(minX, n.x - r);
+        maxX = Math.max(maxX, n.x + r);
+        minY = Math.min(minY, n.y - r);
+        maxY = Math.max(maxY, n.y + r);
+      }
+      if (!Number.isFinite(minX)) return;
+      const k = g.zoom();
+      const c = g.centerAt() as unknown as { x: number; y: number };
+      const next = viewToShow({ k, x: c.x, y: c.y }, { minX, minY, maxX, maxY }, width, height);
+      if (!next) return;
+      if (next.k < k) g.zoom(next.k, 450);
+      g.centerAt(next.x, next.y, 450);
+    },
+    [nodes, width, height],
+  );
   const untangledLinks = useRef<GraphLink[] | null>(null);
   const runUntangle = useCallback(
     (onDone?: () => void) => {
@@ -126,6 +163,13 @@ export default function Graph2D(props: GraphRenderProps) {
       const r = untangle(start, edges, movable, { minGap: 34 });
       if (r.conflictsAfter >= r.conflictsBefore || !r.moved.length) return onDone?.();
       props.onUntangled?.(r.before, r.after);
+
+      // Who's on screen right now? Only they get kept in view afterwards.
+      const visible: Id[] = [];
+      for (const [id, p] of start) {
+        const sc = fg.current?.graph2ScreenCoords(p.x, p.y);
+        if (sc && sc.x >= 0 && sc.x <= width && sc.y >= 0 && sc.y <= height) visible.push(id);
+      }
 
       // Glide moved nodes to their new spots.
       const byId = new Map(nodes.map((n) => [n.id, n]));
@@ -144,6 +188,7 @@ export default function Graph2D(props: GraphRenderProps) {
         if (k < 1) requestAnimationFrame(step);
         else {
           animating.current = false;
+          keepInView(visible);
           onDone?.();
         }
       };
@@ -151,11 +196,12 @@ export default function Graph2D(props: GraphRenderProps) {
     },
     // props.onUntangled is a stable callback from the parent
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [nodes, links],
+    [nodes, links, width, height, keepInView],
   );
 
+  // On demand: untangle without reframing (keepInView handles anything pushed offscreen).
   useEffect(() => {
-    if (untangleSignal) runUntangle(() => fg.current?.zoomToFit(500, 70));
+    if (untangleSignal) runUntangle();
   }, [untangleSignal, runUntangle]);
 
   // Glide to whoever was just selected (the inspector opening shifts the view).
@@ -166,7 +212,7 @@ export default function Graph2D(props: GraphRenderProps) {
   }, [selectedId]);
 
   const drawNode = useCallback(
-    (node: GraphNode, ctx: CanvasRenderingContext2D, scale: number) => {
+    (node: GraphNode, ctx: CanvasRenderingContext2D) => {
       const x = node.x ?? 0;
       const y = node.y ?? 0;
       const r = nodeRadius(node);
@@ -216,22 +262,39 @@ export default function Graph2D(props: GraphRenderProps) {
       ctx.fillText(p.emoji, x, y + r * 0.07);
       if (p.speculative) drawQuestion(ctx, x + r * 0.74, y - r * 0.74, r * 0.5 * ms, '#9a6bff', dark);
 
-      if (labels && p.name) {
-        const fs = Math.max(3.5, 12 / scale) * ls;
-        ctx.font = `800 ${fs}px ${FONT}`;
-        const label = p.isMe ? `👑 ${p.name}` : p.speculative ? `🔮 ${p.name}` : p.name;
-        const w = ctx.measureText(label).width + fs * 1.1;
-        const h = fs * 1.55;
-        const ly = y + r + 3 + h / 2;
-        roundRect(ctx, x - w / 2, ly - h / 2, w, h, h / 2);
-        ctx.fillStyle = dark ? 'rgba(30,24,46,0.85)' : 'rgba(255,255,255,0.88)';
-        ctx.fill();
-        ctx.fillStyle = dark ? '#f6efff' : '#4a3566';
-        ctx.fillText(label, x, ly + fs * 0.05);
-      }
+      // Name labels are drawn later, in the overlay pass, so arrows and badges sit beneath them.
       ctx.restore();
     },
-    [hl, selectedId, selectedPair, labels, dark, ms, ls],
+    [hl, selectedId, selectedPair, dark, ms],
+  );
+
+  /** A person's name pill. Drawn last of all so nothing covers a name. */
+  const drawLabel = useCallback(
+    (node: GraphNode, ctx: CanvasRenderingContext2D, scale: number) => {
+      const p = node.person;
+      if (!p.name || node.x === undefined || node.y === undefined) return;
+      const x = node.x;
+      const y = node.y;
+      const r = nodeRadius(node);
+      const dim = hl && !hl.nodes.has(node.id);
+      ctx.save();
+      ctx.globalAlpha = (dim ? 0.22 : 1) * (p.speculative ? 0.72 : 1);
+      const fs = Math.max(3.5, 12 / scale) * ls;
+      ctx.font = `800 ${fs}px ${FONT}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const label = p.isMe ? `👑 ${p.name}` : p.speculative ? `🔮 ${p.name}` : p.name;
+      const w = ctx.measureText(label).width + fs * 1.1;
+      const h = fs * 1.55;
+      const ly = y + r + 3 + h / 2;
+      roundRect(ctx, x - w / 2, ly - h / 2, w, h, h / 2);
+      ctx.fillStyle = dark ? 'rgba(30,24,46,0.9)' : 'rgba(255,255,255,0.92)';
+      ctx.fill();
+      ctx.fillStyle = dark ? '#f6efff' : '#4a3566';
+      ctx.fillText(label, x, ly + fs * 0.05);
+      ctx.restore();
+    },
+    [hl, dark, ls],
   );
 
   // Bold types (primary partner) get a soft glow drawn underneath the line…
@@ -261,8 +324,9 @@ export default function Graph2D(props: GraphRenderProps) {
   // …plus midpoint badges, drawn after everything else so they're never hidden:
   // a heart for bold types, a "?" for anything speculative (tucked beside the
   // heart when a line is both).
+  // Overlay pass, in stacking order: arrows → ?/💖 badges → name labels on top.
   const drawBadges = useCallback(
-    (ctx: CanvasRenderingContext2D) => {
+    (ctx: CanvasRenderingContext2D, scale: number) => {
       const outline = dark ? '#1c1630' : '#ffffff';
       for (const l of links) {
         const bold = l.type.emphasis === 'bold';
@@ -314,8 +378,9 @@ export default function Graph2D(props: GraphRenderProps) {
         }
         ctx.restore();
       }
+      if (labels) for (const n of nodes) drawLabel(n, ctx, scale);
     },
-    [links, hl, dark, ms],
+    [links, nodes, hl, dark, ms, labels, drawLabel],
   );
 
   const paintPointer = useCallback((node: GraphNode, color: string, ctx: CanvasRenderingContext2D) => {
