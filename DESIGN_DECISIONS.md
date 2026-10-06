@@ -303,6 +303,21 @@ the type-or-paste box still accepts anything. It now keeps the whole first emoji
 ones like 🏳️‍🌈 and 🧑‍🚀 aren't chopped. Country flags are left out because Windows draws them as
 two letters. A test checks that each palette has no duplicates and every entry is one emoji.
 
+**Arrows & sizing (2026-10-06):**
+- *Arrows were too easy to miss.* In 2D the library's small arrowheads are replaced with my own:
+  a larger, notched arrowhead with an outline in the background colour, so it stays readable
+  over glows, crossing lines and the dotted paper. There's also a **second chevron partway
+  along** every one-way line, so direction reads even when the target end is crowded. The mid
+  chevron sits at 32% instead of halfway on lines whose midpoint holds a ? or 💖 badge. The tip
+  is placed where the curve meets the target's edge, found by bisection on the curve. In 3D the
+  cones are bigger and smoother.
+- *Speculative ? marks* are about 30% larger by default on lines, and about 20% on people.
+- **Settings → 🔎 Display** has two sliders (60–200%) with a live preview: **Arrows & badges**
+  (arrows, ? marks, 💖 badges, in 2D and 3D) and **Name labels**. They're plaintext view prefs
+  like 2D/3D mode, since they hold no personal data.
+- Fixed a 3D glitch where the ? badge's corners tore (corner radius larger than half the
+  sprite's height).
+
 ## 11. Ideas for v2 (not built)
 
 - **Plaintext export** (CSV/JSON) behind a confirmation, for moving data elsewhere.

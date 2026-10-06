@@ -4,6 +4,7 @@ import type { GraphLink, GraphNode } from '../../model/graph';
 import type { Id } from '../../model/types';
 import { uniqueEdges, untangle, type Pt } from '../../model/untangle';
 import {
+  arrowTipParam,
   controlPoint2D,
   highlightSets,
   linkAlpha,
@@ -13,6 +14,7 @@ import {
   linkTooltip,
   nodeRadius,
   nodeVal,
+  pointOnLink2D,
   REL_SIZE,
   withAlpha,
   type GraphRenderProps,
@@ -28,6 +30,36 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.arcTo(x, y + h, x, y, r);
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
+}
+
+/**
+ * A bold arrowhead with an outline in the background colour, so it reads
+ * against crossing lines, glows and the dotted paper alike.
+ */
+function drawArrow(
+  ctx: CanvasRenderingContext2D,
+  tip: { x: number; y: number },
+  dir: { x: number; y: number },
+  len: number,
+  color: string,
+  outline: string,
+) {
+  const half = len * 0.6;
+  const bx = tip.x - dir.x * len;
+  const by = tip.y - dir.y * len;
+  ctx.beginPath();
+  ctx.moveTo(tip.x, tip.y);
+  ctx.lineTo(bx - dir.y * half, by + dir.x * half);
+  ctx.lineTo(tip.x - dir.x * len * 0.68, tip.y - dir.y * len * 0.68); // notched back = friendlier shape
+  ctx.lineTo(bx + dir.y * half, by - dir.x * half);
+  ctx.closePath();
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = Math.max(1.2, len * 0.16);
+  ctx.strokeStyle = outline;
+  ctx.setLineDash([]);
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.fill();
 }
 
 /** A little round "?" badge — marks anything speculative. */
@@ -49,6 +81,7 @@ function drawQuestion(ctx: CanvasRenderingContext2D, x: number, y: number, r: nu
 
 export default function Graph2D(props: GraphRenderProps) {
   const { nodes, links, width, height, selectedId, selectedPair, particles, labels, dark, fitSignal, untangleSignal, autoUntangle } = props;
+  const { markerScale: ms, labelScale: ls } = props;
   const fg = useRef<ForceGraphMethods<GraphNode, GraphLink> | undefined>(undefined);
   const [hoverId, setHoverId] = useState<Id | null>(null);
   const fitted = useRef(false);
@@ -181,10 +214,10 @@ export default function Graph2D(props: GraphRenderProps) {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(p.emoji, x, y + r * 0.07);
-      if (p.speculative) drawQuestion(ctx, x + r * 0.72, y - r * 0.72, r * 0.42, '#9a6bff', dark);
+      if (p.speculative) drawQuestion(ctx, x + r * 0.74, y - r * 0.74, r * 0.5 * ms, '#9a6bff', dark);
 
       if (labels && p.name) {
-        const fs = Math.max(3.5, 12 / scale);
+        const fs = Math.max(3.5, 12 / scale) * ls;
         ctx.font = `800 ${fs}px ${FONT}`;
         const label = p.isMe ? `👑 ${p.name}` : p.speculative ? `🔮 ${p.name}` : p.name;
         const w = ctx.measureText(label).width + fs * 1.1;
@@ -198,7 +231,7 @@ export default function Graph2D(props: GraphRenderProps) {
       }
       ctx.restore();
     },
-    [hl, selectedId, selectedPair, labels, dark],
+    [hl, selectedId, selectedPair, labels, dark, ms, ls],
   );
 
   // Bold types (primary partner) get a soft glow drawn underneath the line…
@@ -230,15 +263,35 @@ export default function Graph2D(props: GraphRenderProps) {
   // heart when a line is both).
   const drawBadges = useCallback(
     (ctx: CanvasRenderingContext2D) => {
+      const outline = dark ? '#1c1630' : '#ffffff';
       for (const l of links) {
         const bold = l.type.emphasis === 'bold';
-        if (!bold && !l.speculative) continue;
+        const oneWay = !l.mutual;
+        if (!bold && !l.speculative && !oneWay) continue;
         const s = l.source as GraphNode;
         const t = l.target as GraphNode;
         if (typeof s !== 'object' || s.x === undefined || t.x === undefined) continue;
-        const m = linkMidpoint2D({ x: s.x, y: s.y! }, { x: t.x, y: t.y! }, l.curvature);
+        const S = { x: s.x, y: s.y! };
+        const T = { x: t.x, y: t.y! };
+        const m = linkMidpoint2D(S, T, l.curvature);
         const on = !hl || hl.links.has(l.id);
-        const r = 7.5;
+
+        // One-way: a big arrowhead at the target plus a chevron partway along,
+        // so direction reads even where lines bunch up near a busy person.
+        if (oneWay) {
+          ctx.save();
+          ctx.globalAlpha = Math.min(1, linkAlpha(l, on) + 0.15);
+          const len = (8 + l.width * 1.4) * ms;
+          const tipU = arrowTipParam(S, T, l.curvature, nodeRadius(t) + 2.5);
+          const tip = pointOnLink2D(S, T, l.curvature, tipU);
+          drawArrow(ctx, tip.p, tip.dir, len, l.type.color, outline);
+          // Mid chevron sits before the midpoint when a ? badge lives there.
+          const mid = pointOnLink2D(S, T, l.curvature, l.speculative || bold ? 0.32 : 0.5);
+          drawArrow(ctx, mid.p, mid.dir, len * 0.7, l.type.color, outline);
+          ctx.restore();
+          if (!bold && !l.speculative) continue;
+        }
+        const r = 7.5 * ms;
         ctx.save();
         if (bold) {
           ctx.globalAlpha = (on ? 1 : 0.25) * (l.speculative ? 0.6 : 1);
@@ -256,13 +309,13 @@ export default function Graph2D(props: GraphRenderProps) {
         }
         if (l.speculative) {
           ctx.globalAlpha = on ? 1 : 0.25;
-          const q = bold ? 4.2 : 5;
+          const q = (bold ? 5.2 : 6.5) * ms;
           drawQuestion(ctx, bold ? m.x + r * 0.85 : m.x, bold ? m.y - r * 0.85 : m.y, q, l.type.color, dark);
         }
         ctx.restore();
       }
     },
-    [links, hl, dark],
+    [links, hl, dark, ms],
   );
 
   const paintPointer = useCallback((node: GraphNode, color: string, ctx: CanvasRenderingContext2D) => {
@@ -294,9 +347,8 @@ export default function Graph2D(props: GraphRenderProps) {
       linkCurvature={(l) => l.curvature}
       linkLineDash={(l) => (l.speculative ? [2.5, 3.5] : l.type.dashed ? [4, 3] : null)}
       linkLabel={(l) => linkTooltip(l, nameOf)}
-      linkDirectionalArrowLength={(l) => (l.mutual ? 0 : 6 + l.width)}
-      linkDirectionalArrowRelPos={1}
-      linkDirectionalArrowColor={(l) => withAlpha(l.type.color, Math.min(1, linkAlpha(l, linkOn(l)) + 0.1))}
+      // Arrowheads are drawn by drawBadges (bigger, outlined, plus a mid chevron).
+      linkDirectionalArrowLength={0}
       linkDirectionalParticles={(l) => (particles && linkOn(l) ? linkParticles(l) : 0)}
       linkDirectionalParticleWidth={(l) => 2 + l.width * 0.6}
       linkDirectionalParticleSpeed={0.006}

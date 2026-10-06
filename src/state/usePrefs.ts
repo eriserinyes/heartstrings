@@ -16,6 +16,10 @@ export interface Prefs {
   showSpeculative: boolean;
   /** Rearrange to minimise crossing lines whenever the 2D layout settles. */
   autoUntangle: boolean;
+  /** Size multiplier for map markers: arrows, ? badges, 💖 badges. */
+  markerScale: number;
+  /** Size multiplier for name labels on the map. */
+  labelScale: number;
 }
 
 const KEY = 'heartstrings.prefs.v1';
@@ -30,6 +34,8 @@ const DEFAULTS: Prefs = {
   autoLockMinutes: 15,
   showSpeculative: true,
   autoUntangle: true,
+  markerScale: 1,
+  labelScale: 1,
 };
 
 function load(): Prefs {

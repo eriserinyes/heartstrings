@@ -7,7 +7,7 @@ import type { Prefs } from '../state/usePrefs';
 import type { VaultApi } from '../state/useVault';
 import { ConfirmButton, EmojiPicker, Modal, Swatches, Toggle } from './ui';
 
-type Tab = 'types' | 'privacy' | 'backup';
+type Tab = 'types' | 'display' | 'privacy' | 'backup';
 
 export default function SettingsModal({
   api,
@@ -27,6 +27,7 @@ export default function SettingsModal({
         {(
           [
             ['types', '🎨 Relationship types'],
+            ['display', '🔎 Display'],
             ['privacy', '🔒 Privacy'],
             ['backup', '💾 Backup'],
           ] as const
@@ -37,6 +38,7 @@ export default function SettingsModal({
         ))}
       </div>
       {tab === 'types' && <TypesTab vault={api.vault} dispatch={api.dispatch} />}
+      {tab === 'display' && <DisplayTab prefs={prefs} setPrefs={setPrefs} />}
       {tab === 'privacy' && <PrivacyTab api={api} prefs={prefs} setPrefs={setPrefs} />}
       {tab === 'backup' && <BackupTab api={api} />}
     </Modal>
@@ -98,6 +100,69 @@ function TypeEditor({ t, count, dispatch }: { t: RelationshipType; count: number
         </ConfirmButton>
       </div>
       <Swatches value={t.color} options={TYPE_COLORS} onChange={(color) => set({ color })} />
+    </div>
+  );
+}
+
+function SizeSlider({ label, hint, value, onChange }: { label: string; hint: string; value: number; onChange: (v: number) => void }) {
+  return (
+    <label className="size-slider">
+      <span className="size-slider-head">
+        <b>{label}</b>
+        <span className="size-value">{Math.round(value * 100)}%</span>
+      </span>
+      <input type="range" min={0.6} max={2} step={0.05} value={value} onChange={(e) => onChange(Number(e.target.value))} />
+      <span className="hint">{hint}</span>
+    </label>
+  );
+}
+
+/** A tiny stand-in for the map so size changes are visible right here. */
+function SizePreview({ marker, label }: { marker: number; label: number }) {
+  const len = 13 * marker;
+  const half = len * 0.6;
+  const tipX = 236;
+  const q = 9 * marker;
+  return (
+    <svg className="size-preview" viewBox="0 0 320 96" role="img" aria-label="Preview of arrows, question marks and labels">
+      <line x1="48" y1="40" x2={tipX} y2="40" stroke="#ff7eb6" strokeWidth="3" strokeDasharray="3 4" />
+      <polygon
+        points={`${tipX},40 ${tipX - len},${40 - half} ${tipX - len * 0.68},40 ${tipX - len},${40 + half}`}
+        fill="#ff7eb6"
+        stroke="var(--card)"
+        strokeWidth={Math.max(1.2, len * 0.16)}
+        strokeLinejoin="round"
+        paintOrder="stroke"
+      />
+      <circle cx="140" cy="40" r={q} fill="var(--card)" stroke="#ff7eb6" strokeWidth={Math.max(1, q * 0.22)} />
+      <text x="140" y={40 + q * 0.5} textAnchor="middle" fontSize={q * 1.45} fontWeight="700" fill="#ff7eb6" fontFamily="Fredoka, Nunito, sans-serif">
+        ?
+      </text>
+      <circle cx="30" cy="40" r="16" fill="#ffd166" />
+      <text x="30" y="46" textAnchor="middle" fontSize="16">🦊</text>
+      <circle cx="258" cy="40" r="16" fill="#bdb2ff" />
+      <text x="258" y="46" textAnchor="middle" fontSize="16">🐰</text>
+      <text x="258" y={68 + 8 * label} textAnchor="middle" fontSize={12 * label} fontWeight="800" fill="var(--ink)" fontFamily="Nunito, sans-serif">
+        Sam
+      </text>
+    </svg>
+  );
+}
+
+function DisplayTab({ prefs, setPrefs }: { prefs: Prefs; setPrefs: (p: Partial<Prefs>) => void }) {
+  return (
+    <div className="display-tab">
+      <SizePreview marker={prefs.markerScale} label={prefs.labelScale} />
+      <SizeSlider
+        label="Arrows & badges"
+        hint="Direction arrows, speculative ? marks and 💖 badges, in 2D and 3D."
+        value={prefs.markerScale}
+        onChange={(markerScale) => setPrefs({ markerScale })}
+      />
+      <SizeSlider label="Name labels" hint="The names under each person on the map." value={prefs.labelScale} onChange={(labelScale) => setPrefs({ labelScale })} />
+      <button className="btn" onClick={() => setPrefs({ markerScale: 1, labelScale: 1 })} disabled={prefs.markerScale === 1 && prefs.labelScale === 1}>
+        Reset to 100%
+      </button>
     </div>
   );
 }

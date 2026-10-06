@@ -269,6 +269,8 @@ function Workspace({ api }: { api: VaultApi }) {
           untangleSignal={untangleSignal}
           autoUntangle={prefs.autoUntangle}
           onUntangled={onUntangled}
+          markerScale={prefs.markerScale}
+          labelScale={prefs.labelScale}
           onNodeClick={onNodeClick}
           onLinkClick={onLinkClick}
           onBackgroundClick={onBackgroundClick}

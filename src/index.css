@@ -1162,6 +1162,43 @@ textarea {
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
   color: white;
 }
+.display-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: flex-start;
+}
+.size-preview {
+  width: 100%;
+  max-width: 420px;
+  background: var(--bg);
+  border: 2px solid var(--line);
+  border-radius: 16px;
+}
+.size-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+.size-slider-head {
+  display: flex;
+  justify-content: space-between;
+}
+.size-value {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+}
+.size-slider input[type='range'] {
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  accent-color: var(--accent);
+}
+.size-slider .hint {
+  margin: 0;
+}
 .types-tab,
 .privacy-tab,
 .backup-tab {

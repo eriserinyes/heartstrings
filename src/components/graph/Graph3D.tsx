@@ -32,8 +32,9 @@ function questionSprite(size: number, color: string): SpriteText {
   q.backgroundColor = 'rgba(255,255,255,0.95)';
   q.borderColor = color;
   q.borderWidth = 0.5;
-  q.borderRadius = size;
-  q.padding = [size * 0.28, size * 0.06];
+  // Radius must stay under half the sprite's height or the corners tear.
+  q.padding = [size * 0.32, size * 0.12];
+  q.borderRadius = size * 0.6;
   const m = q.material as THREE.SpriteMaterial;
   m.depthTest = false;
   q.renderOrder = 12;
@@ -68,6 +69,7 @@ function makeStarfield(): THREE.Points {
 
 export default function Graph3D(props: GraphRenderProps) {
   const { nodes, links, width, height, selectedId, selectedPair, particles, labels, fitSignal } = props;
+  const { markerScale: ms, labelScale: ls } = props;
   const fg = useRef<ForceGraphMethods<GraphNode, GraphLink> | undefined>(undefined);
   const [hoverId, setHoverId] = useState<Id | null>(null);
   const fitted = useRef(false);
@@ -141,14 +143,14 @@ export default function Graph3D(props: GraphRenderProps) {
       group.add(emoji);
 
       if (p.speculative) {
-        const q = questionSprite(r * 0.75, '#9a6bff');
-        q.position.set(r * 0.85, r * 0.85, 0);
+        const q = questionSprite(r * 0.9 * ms, '#9a6bff');
+        q.position.set(r * 0.9, r * 0.9, 0);
         track(materials, q.material as THREE.Material);
         group.add(q);
       }
 
       if (labels && p.name) {
-        const label = new SpriteText(p.isMe ? `👑 ${p.name}` : p.speculative ? `🔮 ${p.name}` : p.name, 5, '#fff6ff');
+        const label = new SpriteText(p.isMe ? `👑 ${p.name}` : p.speculative ? `🔮 ${p.name}` : p.name, 5 * ls, '#fff6ff');
         label.fontFace = '"Nunito", ui-rounded, system-ui, sans-serif';
         label.fontWeight = '800';
         label.backgroundColor = 'rgba(40,28,70,0.72)';
@@ -164,7 +166,7 @@ export default function Graph3D(props: GraphRenderProps) {
     },
     // Rebuilt whenever the data changes, so renames / emoji / speculative show up.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [labels, nodes],
+    [labels, nodes, ms, ls],
   );
 
   // Dim non-highlighted nodes by tweaking material opacity in place —
@@ -188,7 +190,7 @@ export default function Graph3D(props: GraphRenderProps) {
     if (!bold && !l.speculative) return null as unknown as THREE.Object3D;
     const group = new THREE.Group();
     if (bold) {
-      const badge = new SpriteText(l.type.emoji, 10);
+      const badge = new SpriteText(l.type.emoji, 10 * ms);
       badge.fontFace = '"Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif';
       const mat = badge.material as THREE.SpriteMaterial;
       mat.depthTest = false; // always visible, like the 2D badge
@@ -197,12 +199,12 @@ export default function Graph3D(props: GraphRenderProps) {
       group.add(badge);
     }
     if (l.speculative) {
-      const q = questionSprite(bold ? 5 : 6.5, l.type.color);
-      if (bold) q.position.set(6, 6, 0);
+      const q = questionSprite((bold ? 6 : 8) * ms, l.type.color);
+      if (bold) q.position.set(7 * ms, 7 * ms, 0);
       group.add(q);
     }
     return group;
-  }, []);
+  }, [ms]);
 
   const placeLinkBadge = useCallback(
     // The library types `link` loosely, hence the cast.
@@ -236,7 +238,9 @@ export default function Graph3D(props: GraphRenderProps) {
       linkWidth={(l) => (l.width + (hl?.links.has(l.id) ? 0.8 : 0)) * 0.55}
       linkCurvature={(l) => l.curvature}
       linkLabel={(l) => linkTooltip(l, nameOf)}
-      linkDirectionalArrowLength={(l) => (l.mutual ? 0 : 4 + l.width)}
+      // Chunky cones so direction is obvious from any angle.
+      linkDirectionalArrowLength={(l) => (l.mutual ? 0 : (7 + l.width * 1.6) * ms)}
+      linkDirectionalArrowResolution={12}
       linkDirectionalArrowRelPos={1}
       linkDirectionalArrowColor={(l) => l.type.color}
       linkDirectionalParticles={(l) => (particles && linkOn(l) ? linkParticles(l) + (linkParticles(l) ? 1 : 0) : 0)}

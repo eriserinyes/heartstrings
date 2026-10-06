@@ -18,6 +18,9 @@ export interface GraphRenderProps {
   /** Untangle automatically whenever the layout settles after a change (2D). */
   autoUntangle: boolean;
   onUntangled?: (before: number, after: number) => void;
+  /** Size multipliers from Settings → Display. */
+  markerScale: number;
+  labelScale: number;
   onNodeClick: (node: GraphNode, shift: boolean) => void;
   onLinkClick: (link: GraphLink) => void;
   onBackgroundClick: () => void;
@@ -125,4 +128,28 @@ export function linkParticles(l: GraphLink): number {
 export function linkDistance(l: GraphLink): number {
   const base = l.type.emphasis === 'bold' ? 65 : l.type.emphasis === 'subtle' ? 150 : 100;
   return l.mutual ? base * 0.85 : base;
+}
+
+/** Point and unit tangent at parameter u along a (possibly curved) 2D link. */
+export function pointOnLink2D(s: XY, t: XY, curvature: number, u: number): { p: XY; dir: XY } {
+  const c = controlPoint2D(s, t, curvature) ?? { x: (s.x + t.x) / 2, y: (s.y + t.y) / 2 };
+  const a = 1 - u;
+  const p = { x: a * a * s.x + 2 * a * u * c.x + u * u * t.x, y: a * a * s.y + 2 * a * u * c.y + u * u * t.y };
+  const dx = 2 * a * (c.x - s.x) + 2 * u * (t.x - c.x);
+  const dy = 2 * a * (c.y - s.y) + 2 * u * (t.y - c.y);
+  const len = Math.hypot(dx, dy) || 1;
+  return { p, dir: { x: dx / len, y: dy / len } };
+}
+
+/** Parameter u where the link is `gap` away from its target — i.e. where an arrowhead tip should sit. */
+export function arrowTipParam(s: XY, t: XY, curvature: number, gap: number): number {
+  let lo = 0.5;
+  let hi = 1;
+  for (let i = 0; i < 14; i++) {
+    const mid = (lo + hi) / 2;
+    const { p } = pointOnLink2D(s, t, curvature, mid);
+    if (Math.hypot(p.x - t.x, p.y - t.y) > gap) lo = mid;
+    else hi = mid;
+  }
+  return lo;
 }
