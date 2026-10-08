@@ -15,6 +15,7 @@ import {
   linkPairKey,
   linkParticles,
   linkTooltip,
+  MIN_NODE_GAP,
   nodeRadius,
   nodeVal,
   overlayBadges,
@@ -193,7 +194,9 @@ export default function Graph2D(props: GraphRenderProps) {
           .filter(([a, b]) => start.has(a) && start.has(b)),
       );
       const movable = new Set(nodes.filter((n) => n.fx === undefined && start.has(n.id)).map((n) => n.id));
-      const r = untangle(start, edges, movable, { minGap: 34 });
+      // Bubble size (+ the selection ring) so lines route around people, not behind them.
+      const radii = new Map(nodes.map((n) => [n.id, nodeRadius(n) + 3]));
+      const r = untangle(start, edges, movable, { minGap: MIN_NODE_GAP, radii });
       if (r.conflictsAfter >= r.conflictsBefore || !r.moved.length) return onDone?.();
       props.onUntangled?.(r.before, r.after);
 

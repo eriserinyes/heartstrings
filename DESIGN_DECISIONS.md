@@ -395,6 +395,11 @@ two letters. A test checks that each palette has no duplicates and every entry i
   Untangling got matching limits: relocated people keep roughly the layout's own spacing, and
   no move may stretch a line past 2.5× the median line length. When crossings are
   unavoidable, it leaves them rather than throwing someone to the edge to dodge one.
+- **Untangling sees bubbles, not points.** It gets each person's drawn radius (+3px for the
+  selection ring). A line counts as running through someone if it passes within radius + 14px
+  of their centre, so a line clipping the edge of a big "me" bubble is a conflict to fix.
+  Relocations keep a full 28px between bubble edges, and swaps are refused if they'd drop a big
+  bubble onto a neighbour.
 
 ## 11. Ideas for v2 (not built)
 

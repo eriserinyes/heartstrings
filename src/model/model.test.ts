@@ -407,6 +407,36 @@ describe('untangle', () => {
     // Relocations keep ~the layout's own spacing, not just the 34px floor.
     expect(Math.min(...nearestDistances(r.positions))).toBeGreaterThan(60);
   });
+
+  it('treats people as bubbles: lines must clear the whole bubble', () => {
+    // The a–b line passes 22px from c's centre: clear of a point, but through a 20px bubble.
+    const pos = new Map([['a', P(0, 0)], ['b', P(300, 0)], ['c', P(150, 22)], ['d', P(150, 200)]]);
+    const edges = uniqueEdges([['a', 'b'], ['c', 'd']]);
+    const radii = new Map([['a', 12], ['b', 12], ['c', 20], ['d', 12]]);
+    const clear = (id: string) => radii.get(id)! + 14;
+    expect(countOverlaps(pos, edges, 15)).toBe(0);
+    expect(countOverlaps(pos, edges, clear)).toBe(1);
+    const r = untangle(pos, edges, new Set(['c']), { maxMs: 1000, minGap: 28, radii, random: () => 0 });
+    expect(countOverlaps(r.positions, edges, clear)).toBe(0);
+  });
+
+  it('never leaves bubbles overlapping after swaps and relocations', () => {
+    let seed = 23;
+    const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const ids = Array.from({ length: 16 }, (_, i) => `n${i}`);
+    const radii = new Map(ids.map((id, i) => [id, i % 4 === 0 ? 24 : 10])); // a few big bubbles
+    const pos = new Map(ids.map((id, i) => [id, P((i % 4) * 110 + random() * 10, Math.floor(i / 4) * 110 + random() * 10)]));
+    const pairs: [string, string][] = [];
+    for (let i = 0; i < 32; i++) pairs.push([ids[Math.floor(random() * 16)], ids[Math.floor(random() * 16)]]);
+    const r = untangle(pos, uniqueEdges(pairs), new Set(ids), { maxMs: 2000, minGap: 28, radii, random });
+    for (const a of ids)
+      for (const b of ids) {
+        if (a >= b) continue;
+        const pa = r.positions.get(a)!;
+        const pb = r.positions.get(b)!;
+        expect(Math.hypot(pa.x - pb.x, pa.y - pb.y)).toBeGreaterThanOrEqual(radii.get(a)! + radii.get(b)! + 14);
+      }
+  });
 });
 
 describe('layout forces', () => {

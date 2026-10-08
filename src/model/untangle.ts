@@ -8,7 +8,10 @@
  * A move is kept if it strictly reduces crossings, or keeps them equal while
  * shortening the total line length (so ties drift toward tidier layouts and
  * the search can't cycle). A line running straight through a third person
- * counts as a conflict too, since it reads just as badly as a crossing.
+ * counts as a conflict too, since it reads just as badly as a crossing. People
+ * are bubbles, not points: a line counts as going through someone when it
+ * passes within their radius plus a little padding, and no move may leave two
+ * bubbles overlapping.
  * Moves must also keep the layout readable: relocated people keep roughly the
  * spacing the layout already had (no squashing), and no move may stretch a
  * line far past the typical line length (no flinging someone to the edge to
@@ -75,13 +78,21 @@ export function countCrossings(pos: ReadonlyMap<Id, Pt>, edges: readonly Edge[])
   return n;
 }
 
-/** (node, line) pairs where the line passes within `clearance` of a node it doesn't belong to. */
-export function countOverlaps(pos: ReadonlyMap<Id, Pt>, edges: readonly Edge[], clearance: number): number {
+/**
+ * (node, line) pairs where the line passes within `clearance` of a node it
+ * doesn't belong to. Clearance is per node (bubble radius + padding) or one number for all.
+ */
+export function countOverlaps(
+  pos: ReadonlyMap<Id, Pt>,
+  edges: readonly Edge[],
+  clearance: number | ((id: Id) => number),
+): number {
+  const clear = typeof clearance === 'number' ? () => clearance : clearance;
   let n = 0;
   for (const e of edges) {
     const a = pos.get(e[0])!;
     const b = pos.get(e[1])!;
-    for (const [id, p] of pos) if (id !== e[0] && id !== e[1] && distToSegment(p, a, b) < clearance) n++;
+    for (const [id, p] of pos) if (id !== e[0] && id !== e[1] && distToSegment(p, a, b) < clear(id)) n++;
   }
   return n;
 }
@@ -110,10 +121,13 @@ export interface UntangleOptions {
   /** Wall-clock budget; the search stops early when it runs out. */
   maxMs?: number;
   /**
-   * Relocated nodes must stay at least this far from every other node. The
-   * effective gap grows to match the layout's own spacing when that's looser.
+   * Gap kept between bubble edges when relocating someone (the effective gap
+   * grows to match the layout's own spacing when that's looser). Lines must
+   * clear a bubble by half this.
    */
   minGap?: number;
+  /** Bubble radius per node (missing = 0, i.e. a point). */
+  radii?: ReadonlyMap<Id, number>;
   /** No line may end up longer than this many times the median line length (unless it already was). */
   maxStretch?: number;
   /** Deterministic randomness for tests. */
@@ -136,10 +150,11 @@ export function untangle(
   start: ReadonlyMap<Id, Pt>,
   edges: readonly Edge[],
   movable: ReadonlySet<Id>,
-  { maxMs = 120, minGap = 30, maxStretch = 2.5, random = Math.random }: UntangleOptions = {},
+  { maxMs = 120, minGap = 30, radii, maxStretch = 2.5, random = Math.random }: UntangleOptions = {},
 ): UntangleResult {
   const pos = new Map<Id, Pt>([...start].map(([id, p]) => [id, { x: p.x, y: p.y }]));
-  const clearance = minGap / 2;
+  const radius = (id: Id) => radii?.get(id) ?? 0;
+  const clearance = (id: Id) => radius(id) + minGap / 2;
   const before = countCrossings(pos, edges);
   const conflictsBefore = before + countOverlaps(pos, edges, clearance);
   const ids = [...pos.keys()].filter((id) => movable.has(id));
@@ -164,14 +179,14 @@ export function untangle(
     // Lines through people: touched people vs every line, plus touched lines vs everyone else.
     for (const v of touched) {
       const p = pos.get(v)!;
-      for (const e of edges) if (e[0] !== v && e[1] !== v && distToSegment(p, pos.get(e[0])!, pos.get(e[1])!) < clearance) crossings++;
+      for (const e of edges) if (e[0] !== v && e[1] !== v && distToSegment(p, pos.get(e[0])!, pos.get(e[1])!) < clearance(v)) crossings++;
     }
     for (const e of mine) {
       const a = pos.get(e[0])!;
       const b = pos.get(e[1])!;
       for (const [id, p] of pos) {
         if (touchedSet.has(id) || id === e[0] || id === e[1]) continue;
-        if (distToSegment(p, a, b) < clearance) crossings++;
+        if (distToSegment(p, a, b) < clearance(id)) crossings++;
       }
     }
     let length = 0;
@@ -194,8 +209,23 @@ export function untangle(
   const better = ([c1, l1, m1]: Score, [c0, l0, m0]: Score) =>
     m1 <= Math.max(maxLen, m0) && (c1 < c0 || (c1 === c0 && l1 < l0 * 0.97));
 
+  // A relocation spot must keep the layout's spacing *and* a full gap between bubble edges.
   const free = (id: Id, p: Pt) => {
-    for (const [o, q] of pos) if (o !== id && Math.hypot(q.x - p.x, q.y - p.y) < spacing) return false;
+    for (const [o, q] of pos) {
+      if (o === id) continue;
+      const need = Math.max(spacing, radius(id) + radius(o) + minGap);
+      if (Math.hypot(q.x - p.x, q.y - p.y) < need) return false;
+    }
+    return true;
+  };
+  // A swap may put a big bubble where a small one was: don't let it land on a neighbour.
+  // (Looser than `free` — the spot was already part of the layout.)
+  const roomy = (id: Id, skip: Id) => {
+    const p = pos.get(id)!;
+    for (const [o, q] of pos) {
+      if (o === id || o === skip) continue;
+      if (Math.hypot(q.x - p.x, q.y - p.y) < radius(id) + radius(o) + minGap / 2) return false;
+    }
     return true;
   };
 
@@ -216,7 +246,7 @@ export function untangle(
         const pv = pos.get(v)!;
         pos.set(u, pv);
         pos.set(v, pu);
-        if (better(localScore([u, v]), s0)) improved = true;
+        if (roomy(u, v) && roomy(v, u) && better(localScore([u, v]), s0)) improved = true;
         else {
           pos.set(u, pu);
           pos.set(v, pv);
