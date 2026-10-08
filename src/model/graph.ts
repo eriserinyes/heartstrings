@@ -35,6 +35,8 @@ export interface GraphOptions {
   /** Restrict to people within `focusDepth` hops of this person. */
   focusId: Id | null;
   focusDepth: number;
+  /** Draw connections a higher-ranked type between the same pair would hide. */
+  showSuperseded?: boolean;
 }
 
 const CURVE_STEP = 0.28;
@@ -77,6 +79,42 @@ export function visibleVault(vault: Vault, showSpeculative: boolean): Vault {
   };
 }
 
+/**
+ * Connections outranked by another between the same pair (see
+ * `RelationshipType.supersedes`), mapped to the type id that outranks them.
+ *
+ * - A shared bond covers both directions; a one-way connection only covers
+ *   the same direction ("I'm their friend" says nothing about how they see me).
+ *   A one-way type outranks a shared bond only when it runs both ways.
+ * - Real outranks real and speculative; a what-if never hides something real.
+ */
+export function supersededBy(rels: Relationship[], types: RelationshipType[]): Map<Id, Id> {
+  const typeById = new Map(types.map((t) => [t.id, t]));
+  const byPair = new Map<string, Relationship[]>();
+  for (const r of rels) {
+    const k = pairKey(r.from, r.to);
+    (byPair.get(k) ?? byPair.set(k, []).get(k)!).push(r);
+  }
+  const out = new Map<Id, Id>();
+  for (const group of byPair.values()) {
+    if (group.length < 2) continue;
+    const covers = (s: Relationship, r: Relationship) => {
+      const st = typeById.get(s.typeId);
+      const rt = typeById.get(r.typeId);
+      if (!st || !rt || s.id === r.id || !st.supersedes?.includes(rt.id)) return false;
+      if (s.speculative && !r.speculative) return false;
+      if (!st.directed) return true;
+      if (rt.directed) return s.from === r.from && s.to === r.to;
+      return group.some((o) => o.typeId === s.typeId && o.from === s.to && o.to === s.from && (!o.speculative || r.speculative));
+    };
+    for (const r of group) {
+      const s = group.find((s) => covers(s, r));
+      if (s) out.set(r.id, s.typeId);
+    }
+  }
+  return out;
+}
+
 /** A connection reads as speculative if it's on that layer or involves a speculative person. */
 export function speculativePeople(vault: Vault): Set<Id> {
   return new Set(vault.people.filter((p) => p.speculative).map((p) => p.id));
@@ -115,6 +153,12 @@ export function buildGraph(vault: Vault, opts: GraphOptions): { nodes: GraphNode
   let rels = vault.relationships.filter(
     (r) => !opts.hiddenTypes.has(r.typeId) && typeById.has(r.typeId) && personIds.has(r.from) && personIds.has(r.to),
   );
+
+  if (!opts.showSuperseded) {
+    // After the type filter, so hiding a romance brings back the friendship under it.
+    const hidden = supersededBy(rels, vault.types);
+    rels = rels.filter((r) => !hidden.has(r.id));
+  }
 
   let people = vault.people;
   if (opts.focusId && personIds.has(opts.focusId)) {

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createKey, seal, unseal, WrongPassphraseError } from '../crypto/vault';
 import { collapseUndirected, normaliseVault, vaultReducer } from '../state/reducer';
 import { DEFAULT_TYPES, emptyVault } from './defaults';
-import { buildGraph, metamours, neighbourhood, visibleVault } from './graph';
+import { buildGraph, metamours, type GraphOptions, neighbourhood, visibleVault } from './graph';
 import { PERSON_EMOJI_GROUPS, TYPE_EMOJI_GROUPS } from './emoji';
 import { viewToShow } from '../components/graph/shared';
 import { countCrossings, countOverlaps, segmentsCross, uniqueEdges, untangle, type Pt } from './untangle';
@@ -25,7 +25,7 @@ function vaultWith(people: string[], rels: Relationship[]): Vault {
   return { ...emptyVault(), people: people.map((p, i) => person(p, i === 0)), relationships: rels };
 }
 
-const opts = { hiddenTypes: new Set<string>(), mergeMutual: true, focusId: null, focusDepth: 1 };
+const opts: GraphOptions = { hiddenTypes: new Set<string>(), mergeMutual: true, focusId: null, focusDepth: 1 };
 
 describe('vault crypto', () => {
   it('round-trips and never contains plaintext names', async () => {
@@ -80,7 +80,7 @@ describe('buildGraph', () => {
       ['a', 'b'],
       [rel('1', 'a', 'b', 'friend'), rel('2', 'a', 'b', 'crush'), rel('3', 'b', 'a', 'play'), rel('4', 'a', 'b', 'romantic')],
     );
-    const g = buildGraph(v, opts);
+    const g = buildGraph(v, { ...opts, showSuperseded: true });
     // Express each curvature in the canonical (a→b) frame — all must differ.
     const canon = g.links.map((l) => (l.source === 'a' ? l.curvature : -l.curvature));
     expect(new Set(canon).size).toBe(4);
@@ -151,9 +151,9 @@ describe('new built-in types', () => {
     ({ emphasis: _e, ...t }) => t,
   );
 
-  it('slots primary & acquaintance into a v1 vault and backfills emphasis', () => {
+  it('slots primary, acquaintance & ex into a v1 vault and backfills emphasis', () => {
     const v = normaliseVault({ people: [], relationships: [], types: v1Types });
-    expect(v.types.map((t) => t.id)).toEqual(['friend', 'acquaintance', 'crush', 'primary', 'romantic', 'play', 'qpr']);
+    expect(v.types.map((t) => t.id)).toEqual(['friend', 'acquaintance', 'crush', 'primary', 'romantic', 'play', 'qpr', 'ex']);
     expect(v.types.find((t) => t.id === 'primary')!.emphasis).toBe('bold');
     expect(v.types.find((t) => t.id === 'friend')!.emphasis).toBe('normal');
     expect(v.seededTypeIds).toContain('primary');
@@ -260,8 +260,83 @@ describe('directional vs shared types', () => {
     expect(v.relationships).toHaveLength(1);
   });
 
-  it('only crush, friendship and acquaintance are one-way by default', () => {
-    expect(DEFAULT_TYPES.filter((t) => t.directed).map((t) => t.id).sort()).toEqual(['acquaintance', 'crush', 'friend']);
+  it('only crush, friendship, acquaintance and ex are one-way by default', () => {
+    expect(DEFAULT_TYPES.filter((t) => t.directed).map((t) => t.id).sort()).toEqual(['acquaintance', 'crush', 'ex', 'friend']);
+  });
+});
+
+describe('exes', () => {
+  it('point from whoever ended it, and a mutual breakup merges', () => {
+    const one = buildGraph(vaultWith(['a', 'b'], [rel('1', 'a', 'b', 'ex')]), opts).links;
+    expect(one).toHaveLength(1);
+    expect(one[0]).toMatchObject({ source: 'a', target: 'b', mutual: false });
+    expect(one[0].type.arrowVerb).toBe('ended it');
+    const both = buildGraph(vaultWith(['a', 'b'], [rel('1', 'a', 'b', 'ex'), rel('2', 'b', 'a', 'ex')]), opts).links;
+    expect(both).toHaveLength(1);
+    expect(both[0].mutual).toBe(true);
+  });
+
+  it('sit alongside everything and are never metamour partners', () => {
+    // Back together after a breakup: the romance hides the friendship, never the ex line.
+    const v = vaultWith(['a', 'b'], [rel('1', 'a', 'b', 'ex'), rel('2', 'a', 'b', 'friend'), rel('3', 'a', 'b', 'romantic')]);
+    expect(buildGraph(v, opts).links.map((l) => l.type.id).sort()).toEqual(['ex', 'romantic']);
+    // c dates b, b's ex is a: a is not c's metamour.
+    const w = vaultWith(['a', 'b', 'c'], [rel('1', 'a', 'b', 'ex'), rel('2', 'b', 'c', 'romantic')]);
+    expect(metamours('c', w)).toEqual([]);
+  });
+});
+
+describe('superseding', () => {
+  const types = (v: Vault, o = opts) => buildGraph(v, o).links.map((l) => l.type.id).sort();
+
+  it('climbs the ladder: acquaintance < friendship < relationship < primary', () => {
+    const r = [rel('1', 'a', 'b', 'acquaintance'), rel('2', 'a', 'b', 'friend')];
+    expect(types(vaultWith(['a', 'b'], r))).toEqual(['friend']);
+    r.push(rel('3', 'a', 'b', 'crush'), rel('4', 'b', 'a', 'qpr'));
+    expect(types(vaultWith(['a', 'b'], r))).toEqual(['qpr']);
+    r.push(rel('5', 'a', 'b', 'primary'));
+    expect(types(vaultWith(['a', 'b'], r))).toEqual(['primary']);
+    expect(types(vaultWith(['a', 'b'], r), { ...opts, showSuperseded: true })).toHaveLength(5);
+  });
+
+  it('keeps parallel types: friends with a crush, play partners in parallel', () => {
+    const v = vaultWith(['a', 'b'], [rel('1', 'a', 'b', 'friend'), rel('2', 'a', 'b', 'crush'), rel('3', 'a', 'b', 'play'), rel('4', 'a', 'b', 'romantic')]);
+    expect(types(v)).toEqual(['play', 'romantic']);
+    expect(types(vaultWith(['a', 'b'], [rel('1', 'a', 'b', 'friend'), rel('2', 'a', 'b', 'crush')]))).toEqual(['crush', 'friend']);
+  });
+
+  it('one-way types only outrank the same direction', () => {
+    // a calls b a friend; b sees a as an acquaintance. Both are real and both show.
+    const v = vaultWith(['a', 'b'], [rel('1', 'a', 'b', 'friend'), rel('2', 'b', 'a', 'acquaintance'), rel('3', 'a', 'b', 'acquaintance')]);
+    expect(buildGraph(v, { ...opts, mergeMutual: false }).links.map((l) => l.id).sort()).toEqual(['r:1', 'r:2']);
+  });
+
+  it('a what-if never hides something real, but real hides what-ifs', () => {
+    const spec = vaultWith(['a', 'b'], [rel('1', 'a', 'b', 'friend'), rel('2', 'a', 'b', 'romantic', 3, true)]);
+    expect(types(spec)).toEqual(['friend', 'romantic']);
+    const real = vaultWith(['a', 'b'], [rel('1', 'a', 'b', 'crush', 3, true), rel('2', 'a', 'b', 'romantic')]);
+    expect(types(real)).toEqual(['romantic']);
+  });
+
+  it('hiding the bigger type brings back what it covered', () => {
+    const v = vaultWith(['a', 'b'], [rel('1', 'a', 'b', 'friend'), rel('2', 'a', 'b', 'romantic')]);
+    expect(types(v, { ...opts, hiddenTypes: new Set(['romantic']) })).toEqual(['friend']);
+  });
+
+  it('two types can never outrank each other, and deleting a type drops it from the lists', () => {
+    let v = vaultWith([], []);
+    const acq = v.types.find((t) => t.id === 'acquaintance')!;
+    v = vaultReducer(v, { type: 'upsertType', relType: { ...acq, supersedes: ['friend'] } });
+    expect(v.types.find((t) => t.id === 'friend')!.supersedes).not.toContain('acquaintance');
+    v = vaultReducer(v, { type: 'removeType', id: 'crush' });
+    expect(v.types.some((t) => t.supersedes?.includes('crush'))).toBe(false);
+  });
+
+  it('backfills the default ladder into older vaults', () => {
+    const old = DEFAULT_TYPES.map(({ supersedes: _s, ...t }) => t);
+    const v = normaliseVault({ people: [], relationships: [], types: old });
+    expect(v.types.find((t) => t.id === 'primary')!.supersedes).toContain('romantic');
+    expect(v.types.find((t) => t.id === 'ex')!.supersedes).toEqual([]);
   });
 });
 

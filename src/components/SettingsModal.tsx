@@ -52,7 +52,7 @@ function TypesTab({ vault, dispatch }: { vault: Vault; dispatch: (a: Action) => 
   const add = () =>
     dispatch({
       type: 'upsertType',
-      relType: { id: newId(), label: 'New type', emoji: '✨', color: TYPE_COLORS[vault.types.length % TYPE_COLORS.length], dashed: false, emphasis: 'normal', directed: false, builtIn: false },
+      relType: { id: newId(), label: 'New type', emoji: '✨', color: TYPE_COLORS[vault.types.length % TYPE_COLORS.length], dashed: false, emphasis: 'normal', directed: false, builtIn: false, supersedes: [] },
     });
 
   return (
@@ -61,10 +61,11 @@ function TypesTab({ vault, dispatch }: { vault: Vault; dispatch: (a: Action) => 
         Rename, recolour, or invent your own kinds of connection. Every type is directional and independent. “BIG” types
         draw thick and glowing with a badge on the line; “whisper” types draw thin and faint. Types marked
         “one-way ok” (like crushes) have a separate switch per direction; the rest are always a shared,
-        mutual bond.
+        mutual bond. A type can <b>outrank</b> others: between the same two people only the bigger bond draws on
+        the map (a romance hides the friendship under it). Use “show lines under bigger bonds” in the legend to see them all.
       </p>
       {vault.types.map((t) => (
-        <TypeEditor key={t.id} t={t} count={counts.get(t.id) ?? 0} dispatch={dispatch} />
+        <TypeEditor key={t.id} t={t} all={vault.types} count={counts.get(t.id) ?? 0} dispatch={dispatch} />
       ))}
       <button className="btn btn-primary" onClick={add}>
         ＋ Add a type
@@ -73,8 +74,21 @@ function TypesTab({ vault, dispatch }: { vault: Vault; dispatch: (a: Action) => 
   );
 }
 
-function TypeEditor({ t, count, dispatch }: { t: RelationshipType; count: number; dispatch: (a: Action) => void }) {
+function TypeEditor({
+  t,
+  all,
+  count,
+  dispatch,
+}: {
+  t: RelationshipType;
+  all: RelationshipType[];
+  count: number;
+  dispatch: (a: Action) => void;
+}) {
   const set = (patch: Partial<RelationshipType>) => dispatch({ type: 'upsertType', relType: { ...t, ...patch } });
+  const outranks = t.supersedes ?? [];
+  const toggleOutrank = (id: string) =>
+    set({ supersedes: outranks.includes(id) ? outranks.filter((x) => x !== id) : [...outranks, id] });
   return (
     <div className="type-editor" style={{ '--c': t.color } as React.CSSProperties}>
       <div className="type-editor-row">
@@ -100,6 +114,34 @@ function TypeEditor({ t, count, dispatch }: { t: RelationshipType; count: number
         </ConfirmButton>
       </div>
       <Swatches value={t.color} options={TYPE_COLORS} onChange={(color) => set({ color })} />
+      {t.directed && (
+        <label className="type-editor-verb">
+          arrow means <i>A</i>
+          <input
+            value={t.arrowVerb ?? ''}
+            placeholder="feels this toward B"
+            onChange={(e) => set({ arrowVerb: e.target.value || undefined })}
+            aria-label="What the arrow means"
+          />
+        </label>
+      )}
+      <div className="outranks" role="group" aria-label="Types this one hides on the map">
+        <span className="hint">outranks</span>
+        {all
+          .filter((o) => o.id !== t.id)
+          .map((o) => (
+            <button
+              key={o.id}
+              className={`outrank-chip ${outranks.includes(o.id) ? 'on' : ''}`}
+              style={{ '--c': o.color } as React.CSSProperties}
+              aria-pressed={outranks.includes(o.id)}
+              title={outranks.includes(o.id) ? `${t.label} draws instead of ${o.label}` : `${o.label} draws alongside ${t.label}`}
+              onClick={() => toggleOutrank(o.id)}
+            >
+              {o.emoji} {o.label}
+            </button>
+          ))}
+      </div>
     </div>
   );
 }

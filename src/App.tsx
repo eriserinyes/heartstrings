@@ -115,10 +115,11 @@ function Workspace({ api }: { api: VaultApi }) {
       buildGraph(shown, {
         hiddenTypes,
         mergeMutual: prefs.mergeMutual,
+        showSuperseded: prefs.showSuperseded,
         focusId: focus?.id ?? null,
         focusDepth: focus?.depth ?? 1,
       }),
-    [shown, hiddenTypes, prefs.mergeMutual, focus],
+    [shown, hiddenTypes, prefs.mergeMutual, prefs.showSuperseded, focus],
   );
 
   const lensResult = useMemo(() => (lens ? runLens(lens, lensScope, graph.links) : null), [lens, lensScope, graph.links]);
@@ -341,6 +342,7 @@ function Workspace({ api }: { api: VaultApi }) {
               onFocus={(id, depth = 1) => setFocus(id ? { id, depth } : null)}
               focused={focus?.id === sel.id}
               showSpeculative={prefs.showSpeculative}
+              showSuperseded={prefs.showSuperseded}
               onClose={() => setSel(null)}
             />
           )}
@@ -353,6 +355,7 @@ function Workspace({ api }: { api: VaultApi }) {
               onPick={(a, b) => setSel({ kind: 'pair', a, b })}
               onSelectPerson={(id) => setSel({ kind: 'person', id })}
               showSpeculative={prefs.showSpeculative}
+              showSuperseded={prefs.showSuperseded}
             />
           )}
         </aside>
@@ -441,6 +444,9 @@ function Legend({
           </div>
           <div className="legend-opts">
             <Toggle checked={prefs.mergeMutual} onChange={(mergeMutual) => setPrefs({ mergeMutual })} label="merge mutual lines" />
+            <span title="Normally a bigger bond hides the smaller ones under it (a romance hides the friendship). Turn on to draw them all.">
+              <Toggle checked={prefs.showSuperseded} onChange={(showSuperseded) => setPrefs({ showSuperseded })} label="show lines under bigger bonds" />
+            </span>
             <Toggle checked={prefs.particles} onChange={(particles) => setPrefs({ particles })} label="sparkles" />
             <Toggle checked={prefs.labels} onChange={(labels) => setPrefs({ labels })} label="names" />
             {prefs.mode === '2d' && (

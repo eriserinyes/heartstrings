@@ -1,10 +1,12 @@
 # 💗 Heartstrings
 
 A private, cute, colour-coded map of you and the people in your life — primary partners,
-romantic partners, crushes, play partners, queerplatonic bonds, friends, acquaintances, and any
-type you invent. Crushes, friendships and acquaintances can be **one-way** (each direction is
-its own switch), while partner types are **shared bonds**. Every type is independent, so a
-one-way crush, a mutual friendship and a play-partnership can all exist between the same two people. Polycules welcome. Flip between a **2D** daytime
+romantic partners, crushes, play partners, queerplatonic bonds, friends, acquaintances, exes, and any
+type you invent. Crushes, friendships, acquaintances and exes can be **one-way** (each direction is
+its own switch; for exes the arrow points from whoever ended it), while partner types are **shared bonds**. Every type is independent, so a
+one-way crush, a mutual friendship and a play-partnership can all exist between the same two people.
+On the map, bigger bonds **outrank** smaller ones between the same pair (acquaintance < friendship <
+relationship < primary; relationships also outrank crushes), so a romance draws instead of the friendship under it. Polycules welcome. Flip between a **2D** daytime
 scrapbook and a **3D** night-sky constellation.
 
 Everything is **encrypted on your device** with a passphrase only you know.
@@ -24,7 +26,7 @@ npm run build      # static build in dist/ — host anywhere, or open via `npm r
 2. Add yourself (👑 "This is me"), then add people (`＋ Person`, or press `N`).
 3. Connect two people with `💞 Connect`, the "Connect with…" picker on someone's panel,
    **shift-click** a second person on the map, or click any existing line.
-4. In the pair editor, one-way-ok types (crush, friendship, acquaintance) have two switches,
+4. In the pair editor, one-way-ok types (crush, friendship, acquaintance, ex) have two switches,
    **A → B** and **B → A**; partner types have a single **together** switch. Change which is
    which per type in ⚙️ Settings ("one-way ok"). Expand ▾ for intensity (♥ 1–5, drives line thickness), a "since" date and a note.
 
@@ -36,7 +38,9 @@ npm run build      # static build in dist/ — host anywhere, or open via `npm r
 | Dashed                  | "soft" types (crushes by default; configurable) |
 | Thickness               | intensity                                      |
 | Thick + glow + 💖 badge | **BIG** types (primary partner)                 |
-| Thin & faint            | **whisper** types (acquaintance)                |
+| Thin & faint            | **whisper** types (acquaintance, ex)            |
+| Grey 💔 arrow           | ex; points from whoever ended it (no arrow = mutual) |
+| Line missing?           | outranked by a bigger bond; see “show lines under bigger bonds” |
 | Dotted & ghostly + ?    | 🔮 speculative connection                       |
 | See-through, dashed + ? | 🔮 speculative person                           |
 | Gold halo / ring        | you                                            |

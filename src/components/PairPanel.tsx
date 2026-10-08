@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { newId } from '../model/defaults';
+import { supersededBy } from '../model/graph';
 import type { Id, Person, Relationship, RelationshipType, Vault } from '../model/types';
 import type { Action } from '../state/reducer';
 import { Hearts, Toggle } from './ui';
@@ -18,6 +19,7 @@ export default function PairPanel({
   onPick,
   onSelectPerson,
   showSpeculative,
+  showSuperseded,
 }: {
   vault: Vault;
   dispatch: (x: Action) => void;
@@ -27,6 +29,7 @@ export default function PairPanel({
   onSelectPerson: (id: Id) => void;
   /** When the speculative layer is hidden, only real connections are editable. */
   showSpeculative: boolean;
+  showSuperseded: boolean;
 }) {
   const [layerChoice, setLayer] = useState<'real' | 'spec'>('real');
   const layer = showSpeculative ? layerChoice : 'real';
@@ -34,6 +37,7 @@ export default function PairPanel({
     vault.relationships.filter((r) => r.speculative && ((r.from === x && r.to === y) || (r.from === y && r.to === x))).length;
   const pa = vault.people.find((p) => p.id === a) ?? null;
   const pb = vault.people.find((p) => p.id === b) ?? null;
+  const outranked = showSuperseded ? new Map<Id, Id>() : supersededBy(pairRels(vault, a, b), vault.types);
   const sorted = [...vault.people].sort((x, y) => Number(y.isMe) - Number(x.isMe) || x.name.localeCompare(y.name));
 
   const picker = (value: Id | null, other: Id | null, onChange: (id: Id | null) => void) => (
@@ -87,7 +91,16 @@ export default function PairPanel({
       {pa && pb ? (
         <div className={`type-rows ${layer === 'spec' ? 'spec' : ''}`}>
           {vault.types.map((t) => (
-            <TypeRow key={t.id} type={t} a={pa} b={pb} vault={vault} dispatch={dispatch} speculative={layer === 'spec'} />
+            <TypeRow
+              key={t.id}
+              type={t}
+              a={pa}
+              b={pb}
+              vault={vault}
+              dispatch={dispatch}
+              speculative={layer === 'spec'}
+              outranked={outranked}
+            />
           ))}
         </div>
       ) : (
@@ -95,6 +108,10 @@ export default function PairPanel({
       )}
     </div>
   );
+}
+
+function pairRels(vault: Vault, a: Id | null, b: Id | null): Relationship[] {
+  return vault.relationships.filter((r) => (r.from === a && r.to === b) || (r.from === b && r.to === a));
 }
 
 function PersonSlot({ person, children, onClick }: { person: Person | null; children: React.ReactNode; onClick?: () => void }) {
@@ -120,6 +137,7 @@ function TypeRow({
   vault,
   dispatch,
   speculative,
+  outranked,
 }: {
   type: RelationshipType;
   a: Person;
@@ -127,6 +145,8 @@ function TypeRow({
   vault: Vault;
   dispatch: (x: Action) => void;
   speculative: boolean;
+  /** Connections a bigger bond hides on the map → the type hiding them. */
+  outranked: Map<Id, Id>;
 }) {
   const find = (from: Person, to: Person) =>
     vault.relationships.find((r) => r.typeId === type.id && r.from === from.id && r.to === to.id && !!r.speculative === speculative);
@@ -149,16 +169,24 @@ function TypeRow({
     }
   };
 
+  // Only worth saying when everything switched on in this row is hidden.
+  const live = [ab, ba].filter((r): r is Relationship => !!r);
+  const hiderId = live.length && live.every((r) => outranked.has(r.id)) ? outranked.get(live[0].id) : undefined;
+  const hider = vault.types.find((t) => t.id === hiderId);
+  const one = (from: Person) => (type.arrowVerb ? `${from.name} ${type.arrowVerb}` : `${from.name} → ${from === a ? b.name : a.name}`);
+
   const status = !type.directed
     ? ab
       ? 'together 💫'
       : ''
     : ab && ba
-      ? 'mutual 💫'
+      ? type.arrowVerb
+        ? 'mutual'
+        : 'mutual 💫'
       : ab
-        ? `${a.name} → ${b.name}`
+        ? one(a)
         : ba
-          ? `${b.name} → ${a.name}`
+          ? one(b)
           : '';
 
   return (
@@ -169,13 +197,18 @@ function TypeRow({
           <span>
             {type.label}
             {status && <small>{status}</small>}
+            {hider && (
+              <small className="type-hidden-by" title="A bigger bond between them draws instead of this on the map">
+                🙈 under {hider.emoji} {hider.label}
+              </small>
+            )}
           </span>
         </span>
         <div className="dir-toggles">
           {type.directed ? (
             <>
-              <Toggle checked={!!ab} onChange={(on) => toggle(a, b, ab, on)} color={type.color} label={<DirLabel from={a} to={b} />} />
-              <Toggle checked={!!ba} onChange={(on) => toggle(b, a, ba, on)} color={type.color} label={<DirLabel from={b} to={a} />} />
+              <Toggle checked={!!ab} onChange={(on) => toggle(a, b, ab, on)} color={type.color} label={<DirLabel from={a} to={b} verb={type.arrowVerb} />} />
+              <Toggle checked={!!ba} onChange={(on) => toggle(b, a, ba, on)} color={type.color} label={<DirLabel from={b} to={a} verb={type.arrowVerb} />} />
             </>
           ) : (
             <Toggle checked={!!ab} onChange={(on) => toggle(a, b, ab, on)} color={type.color} label={<DirLabel from={a} to={b} both />} />
@@ -197,9 +230,10 @@ function TypeRow({
   );
 }
 
-function DirLabel({ from, to, both = false }: { from: Person; to: Person; both?: boolean }) {
+function DirLabel({ from, to, both = false, verb }: { from: Person; to: Person; both?: boolean; verb?: string }) {
+  const title = both ? `${from.name} & ${to.name}, together` : verb ? `${from.name} ${verb}` : `${from.name} → ${to.name}`;
   return (
-    <span className="dir-label" title={both ? `${from.name} & ${to.name}, together` : `${from.name} → ${to.name}`}>
+    <span className="dir-label" title={title}>
       {from.emoji}
       <i>{both ? '⇄' : '→'}</i>
       {to.emoji}

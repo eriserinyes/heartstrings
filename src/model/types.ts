@@ -43,6 +43,17 @@ export interface RelationshipType {
    */
   directed: boolean;
   builtIn: boolean;
+  /**
+   * What a one-way arrow means, said of the person it starts from: "ended it"
+   * for exes. Unset = the usual "feels this toward".
+   */
+  arrowVerb?: string;
+  /**
+   * Types this one outranks between the same pair: while both exist, only this
+   * one draws on the map (a romance hides the friendship underneath it). Not
+   * transitive; list everything it should hide.
+   */
+  supersedes?: Id[];
 }
 
 /**

@@ -82,6 +82,7 @@ common in the same communities and costs nothing to delete.
 | Romantic        | 💞    | rose     | shared bond | solid                        |
 | Play partner    | 🔥    | violet   | shared bond | solid                        |
 | Queerplatonic   | 🌈    | peach    | shared bond | solid                        |
+| Ex              | 💔    | grey     | one-way ok  | whisper                      |
 
 Crush is dashed by default to read as "unspoken / tentative".
 
@@ -129,6 +130,39 @@ type (editable in Settings, so you could make any type BIG):
 offered. On unlock, any built-in it hasn't been offered is inserted (acquaintance after
 friendship, primary before romantic). Built-ins you've deleted stay deleted, because they're
 already in that list. v1 vaults are treated as having been offered the original five.
+
+### Exes and the superseding ladder (added 2026-10-07)
+
+Asked for: exes as a default type "with directionality representing who ended the relationship",
+and relationships that display *instead* of crushes or friendships, with "acquaintances <
+friendships < relationships < primary partnerships, with others being parallel".
+
+- **Ex** is a one-way-ok built-in (grey, whisper, 💔). **A → B means A ended it**; both directions
+  means it was mutual. Types gained an optional **`arrowVerb`** ("ended it") so the pair editor,
+  tooltips and chips say "Alex ended it" rather than a bare arrow. Editable in Settings for any
+  one-way type ("arrow means A …"). Exes don't count as partners for metamours. Existing vaults
+  get it on unlock, slotted after Queerplatonic.
+- **Superseding** is a per-type list, **`supersedes`** ("outranks" in Settings, toggled as chips).
+  **[interpretation]** A strict ladder can't say "relationships hide crushes, but a crush on a friend
+  shows both", so rather than a single rank number each type lists exactly what it hides. Defaults:
+  friendship outranks acquaintance; romantic, play and queerplatonic each outrank friendship,
+  acquaintance and crush; primary outranks all of those. Exes and custom types outrank nothing and
+  aren't outranked: they're the "parallel" ones. Romantic, play and queerplatonic are peers, so
+  they all show together. It's **not transitive**; list everything a type should hide.
+- **Rules** (`supersededBy()` in `graph.ts`, unit-tested):
+  - A shared bond covers both directions. A one-way type only covers the **same direction**:
+    "I call them a friend" doesn't erase "they see me as an acquaintance".
+  - A real connection hides speculative ones, but a 🔮 what-if never hides something real.
+  - It's applied **after** the legend's type filter, so hiding Romantic brings back the friendship
+    underneath.
+  - Two types can't outrank each other: ticking one direction clears the other. Deleting a type
+    removes it from everyone's lists. (Longer cycles A>B>C>A aren't prevented and would hide all
+    three; unlikely enough not to guard.)
+- **Display only.** Nothing is deleted; superseded connections stay in the vault. The person panel
+  leaves their chips out too, the pair editor still shows every switch but notes "🙈 under 💞
+  Romantic", and a legend toggle **"show lines under bigger bonds"** (plaintext pref, default off)
+  draws everything.
+- Existing vaults get the default ladder on built-ins on unlock; custom types start with nothing.
 
 ## 2b. The speculative layer (added after v1)
 

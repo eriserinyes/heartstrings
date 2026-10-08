@@ -1453,6 +1453,49 @@ textarea {
 .type-editor .btn-danger {
   padding: 4px 10px;
 }
+.type-editor-verb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+.type-editor-verb input {
+  flex: 1;
+  min-width: 0;
+}
+.outranks {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.outranks .hint {
+  margin: 0 4px 0 0;
+}
+.outrank-chip {
+  font: inherit;
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1.5px dashed color-mix(in srgb, var(--c) 45%, transparent);
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  opacity: 0.75;
+}
+.outrank-chip.on {
+  border-style: solid;
+  border-color: var(--c);
+  background: color-mix(in srgb, var(--c) 18%, var(--card));
+  color: var(--ink);
+  opacity: 1;
+  font-weight: 700;
+}
+.type-name small.type-hidden-by {
+  font-style: italic;
+  opacity: 0.8;
+}
 
 /* ---------- emphasis (BIG / whisper types) ---------- */
 .legend-line.emph-bold {

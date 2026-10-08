@@ -8,6 +8,8 @@ export interface Prefs {
   mode: '2d' | '3d';
   hiddenTypes: string[];
   mergeMutual: boolean;
+  /** Also draw connections a higher-ranked type between the same pair hides. */
+  showSuperseded: boolean;
   particles: boolean;
   labels: boolean;
   peopleOpen: boolean;
@@ -28,6 +30,7 @@ const DEFAULTS: Prefs = {
   mode: '2d',
   hiddenTypes: [],
   mergeMutual: true,
+  showSuperseded: false,
   particles: true,
   labels: true,
   peopleOpen: true,

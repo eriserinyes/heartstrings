@@ -57,7 +57,13 @@ export function vaultReducer(v: Vault, a: Action): Vault {
       return { ...v, relationships: v.relationships.filter((r) => r.id !== a.id) };
     case 'upsertType': {
       const prev = v.types.find((t) => t.id === a.relType.id);
-      const types = prev ? v.types.map((t) => (t.id === a.relType.id ? a.relType : t)) : [...v.types, a.relType];
+      const outranks = new Set(a.relType.supersedes ?? []);
+      const types = (prev ? v.types.map((t) => (t.id === a.relType.id ? a.relType : t)) : [...v.types, a.relType]).map((t) =>
+        // Two types can't outrank each other: the newer choice wins.
+        outranks.has(t.id) && t.supersedes?.includes(a.relType.id)
+          ? { ...t, supersedes: t.supersedes.filter((x) => x !== a.relType.id) }
+          : t,
+      );
       let relationships = v.relationships;
       // Flipping directionality converts existing connections so their meaning survives.
       if (prev && prev.directed && !a.relType.directed) relationships = collapseUndirected(relationships, new Set([prev.id]));
@@ -67,7 +73,9 @@ export function vaultReducer(v: Vault, a: Action): Vault {
     case 'removeType':
       return {
         ...v,
-        types: v.types.filter((t) => t.id !== a.id),
+        types: v.types
+          .filter((t) => t.id !== a.id)
+          .map((t) => (t.supersedes?.includes(a.id) ? { ...t, supersedes: t.supersedes.filter((x) => x !== a.id) } : t)),
         relationships: v.relationships.filter((r) => r.typeId !== a.id),
       };
     case 'pinAll':
@@ -124,6 +132,7 @@ export function expandToDirected(rels: Relationship[], typeId: Id): Relationship
 const PLACEMENT: Record<Id, { after?: Id; before?: Id }> = {
   acquaintance: { after: 'friend' },
   primary: { before: 'romantic' },
+  ex: { after: 'qpr' },
 };
 
 /**
@@ -138,13 +147,15 @@ function seedNewBuiltIns(rawTypes: RelationshipType[], seeded: Id[] = V1_TYPE_ID
     emphasis: t.emphasis ?? byId.get(t.id)?.emphasis ?? 'normal',
     // Built-ins take the new default; custom types were always directional before.
     directed: t.directed ?? byId.get(t.id)?.directed ?? true,
+    // Built-ins pick up the default ladder; custom types start out parallel to everything.
+    supersedes: t.supersedes ?? byId.get(t.id)?.supersedes ?? [],
   }));
   for (const d of DEFAULT_TYPES) {
     if (seeded.includes(d.id) || types.some((t) => t.id === d.id)) continue;
     const place = PLACEMENT[d.id] ?? {};
     const anchor = types.findIndex((t) => t.id === (place.after ?? place.before));
     const at = anchor < 0 ? types.length : place.after ? anchor + 1 : anchor;
-    types.splice(at, 0, { ...d });
+    types.splice(at, 0, { ...d, supersedes: [...(d.supersedes ?? [])] });
   }
   return { types, seededTypeIds: [...new Set([...seeded, ...DEFAULT_TYPES.map((t) => t.id)])] };
 }

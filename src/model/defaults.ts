@@ -1,13 +1,21 @@
 import type { RelationshipType, Vault } from './types';
 
+/**
+ * The superseding ladder: acquaintance < friendship < relationship (romantic,
+ * play, queerplatonic) < primary. Relationships also outrank crushes. Exes and
+ * anything not listed sit alongside everything else.
+ */
+const BELOW_RELATIONSHIP = ['friend', 'acquaintance', 'crush'];
+
 export const DEFAULT_TYPES: RelationshipType[] = [
-  { id: 'friend', label: 'Friendship', emoji: '🌼', color: '#3fbfa8', dashed: false, emphasis: 'normal', directed: true, builtIn: true },
-  { id: 'acquaintance', label: 'Acquaintance', emoji: '👋', color: '#a29bc4', dashed: false, emphasis: 'subtle', directed: true, builtIn: true },
-  { id: 'crush', label: 'Crush', emoji: '💘', color: '#ff7eb6', dashed: true, emphasis: 'normal', directed: true, builtIn: true },
-  { id: 'primary', label: 'Primary partner', emoji: '💖', color: '#ff1f8f', dashed: false, emphasis: 'bold', directed: false, builtIn: true },
-  { id: 'romantic', label: 'Romantic', emoji: '💞', color: '#ff4f6d', dashed: false, emphasis: 'normal', directed: false, builtIn: true },
-  { id: 'play', label: 'Play partner', emoji: '🔥', color: '#9a6bff', dashed: false, emphasis: 'normal', directed: false, builtIn: true },
-  { id: 'qpr', label: 'Queerplatonic', emoji: '🌈', color: '#ffa94d', dashed: false, emphasis: 'normal', directed: false, builtIn: true },
+  { id: 'friend', label: 'Friendship', emoji: '🌼', color: '#3fbfa8', dashed: false, emphasis: 'normal', directed: true, builtIn: true, supersedes: ['acquaintance'] },
+  { id: 'acquaintance', label: 'Acquaintance', emoji: '👋', color: '#a29bc4', dashed: false, emphasis: 'subtle', directed: true, builtIn: true, supersedes: [] },
+  { id: 'crush', label: 'Crush', emoji: '💘', color: '#ff7eb6', dashed: true, emphasis: 'normal', directed: true, builtIn: true, supersedes: [] },
+  { id: 'primary', label: 'Primary partner', emoji: '💖', color: '#ff1f8f', dashed: false, emphasis: 'bold', directed: false, builtIn: true, supersedes: ['romantic', 'play', 'qpr', ...BELOW_RELATIONSHIP] },
+  { id: 'romantic', label: 'Romantic', emoji: '💞', color: '#ff4f6d', dashed: false, emphasis: 'normal', directed: false, builtIn: true, supersedes: BELOW_RELATIONSHIP },
+  { id: 'play', label: 'Play partner', emoji: '🔥', color: '#9a6bff', dashed: false, emphasis: 'normal', directed: false, builtIn: true, supersedes: BELOW_RELATIONSHIP },
+  { id: 'qpr', label: 'Queerplatonic', emoji: '🌈', color: '#ffa94d', dashed: false, emphasis: 'normal', directed: false, builtIn: true, supersedes: BELOW_RELATIONSHIP },
+  { id: 'ex', label: 'Ex', emoji: '💔', color: '#868e96', dashed: false, emphasis: 'subtle', directed: true, builtIn: true, arrowVerb: 'ended it', supersedes: [] },
 ];
 
 /** The built-ins that shipped in v1, before seededTypeIds existed. */
@@ -36,7 +44,7 @@ export function emptyVault(): Vault {
   return {
     version: 1,
     people: [],
-    types: DEFAULT_TYPES.map((t) => ({ ...t })),
+    types: DEFAULT_TYPES.map((t) => ({ ...t, supersedes: [...(t.supersedes ?? [])] })),
     relationships: [],
     seededTypeIds: DEFAULT_TYPES.map((t) => t.id),
   };

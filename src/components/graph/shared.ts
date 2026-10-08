@@ -137,7 +137,8 @@ export function linkTooltip(l: GraphLink, nameOf: (id: Id) => string): string {
   const t = nameOf(endId(l.target));
   const arrow = !l.type.directed ? '&' : l.mutual ? '⇄' : '→';
   const spec = l.speculative ? '<div class="tip-spec">🔮 speculative</div>' : '';
-  return `<div class="tip">${spec}<b>${l.type.emoji} ${l.type.label}</b><br/>${escapeHtml(s)} ${arrow} ${escapeHtml(t)}</div>`;
+  const verb = l.type.directed && l.type.arrowVerb ? `<br/><i>${escapeHtml(l.mutual ? `both ${l.type.arrowVerb}` : `${s} ${l.type.arrowVerb}`)}</i>` : '';
+  return `<div class="tip">${spec}<b>${l.type.emoji} ${l.type.label}</b><br/>${escapeHtml(s)} ${arrow} ${escapeHtml(t)}${verb}</div>`;
 }
 
 export function escapeHtml(s: string): string {

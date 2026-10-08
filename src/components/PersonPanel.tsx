@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { metamours } from '../model/graph';
+import { metamours, supersededBy } from '../model/graph';
 import { ME_COLOR, newId, PERSON_COLORS, pick } from '../model/defaults';
 import { PERSON_EMOJI_GROUPS, PERSON_STARTERS } from '../model/emoji';
 import type { Id, Person, Relationship, Vault } from '../model/types';
@@ -85,6 +85,7 @@ export function PersonPanel({
   focused,
   onClose,
   showSpeculative,
+  showSuperseded,
 }: Common & {
   id: Id;
   onOpenPair: (a: Id, b: Id) => void;
@@ -92,6 +93,8 @@ export function PersonPanel({
   focused: boolean;
   onClose: () => void;
   showSpeculative: boolean;
+  /** Off = chips outranked by a bigger bond with the same person are left out, like on the map. */
+  showSuperseded: boolean;
 }) {
   const person = vault.people.find((p) => p.id === id);
   const typeById = useMemo(() => new Map(vault.types.map((t) => [t.id, t])), [vault.types]);
@@ -99,7 +102,9 @@ export function PersonPanel({
   const pairs = useMemo<PairSummary[]>(() => {
     const m = new Map<Id, PairSummary>();
     const byId = new Map(vault.people.map((p) => [p.id, p]));
+    const hidden = showSuperseded ? null : supersededBy(vault.relationships, vault.types);
     for (const r of vault.relationships) {
+      if (hidden?.has(r.id)) continue;
       const otherId = r.from === id ? r.to : r.to === id ? r.from : null;
       if (!otherId || !byId.has(otherId)) continue;
       const s = m.get(otherId) ?? { other: byId.get(otherId)!, out: [], inc: [] };
@@ -107,7 +112,7 @@ export function PersonPanel({
       m.set(otherId, s);
     }
     return [...m.values()].sort((a, b) => Number(b.other.isMe) - Number(a.other.isMe) || a.other.name.localeCompare(b.other.name));
-  }, [vault, id]);
+  }, [vault, id, showSuperseded]);
 
   const metas = useMemo(() => metamours(id, vault), [id, vault]);
   const [connectTo, setConnectTo] = useState('');
@@ -171,8 +176,8 @@ export function PersonPanel({
                         : o && i
                           ? `mutual ${t.label}`
                           : o
-                            ? `${person.name} → ${other.name}`
-                            : `${other.name} → ${person.name}`;
+                            ? t.arrowVerb ? `${t.label}: ${person.name} ${t.arrowVerb}` : `${person.name} → ${other.name}`
+                            : t.arrowVerb ? `${t.label}: ${other.name} ${t.arrowVerb}` : `${other.name} → ${person.name}`;
                       return (
                         <span
                           key={key}

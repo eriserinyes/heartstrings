@@ -54,7 +54,7 @@ export const TYPE_EMOJI_GROUPS: EmojiGroup[] = [
   {
     label: 'Love',
     icon: '💖',
-    emoji: split('💖💗💓💞💕💘💝❤️🧡💛💚💙💜🩷🩵🤍🖤❤️‍🔥💋💍💌🌹🥀💐😍🥰😘'),
+    emoji: split('💖💗💓💞💕💘💝❤️🧡💛💚💙💜🩷🩵🤍🖤❤️‍🔥💔❤️‍🩹💋💍💌🌹🥀💐😍🥰😘'),
   },
   {
     label: 'Bonds',
