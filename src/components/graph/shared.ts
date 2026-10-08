@@ -1,4 +1,4 @@
-import type { GraphLink, GraphNode } from '../../model/graph';
+import { pairKey, type GraphLink, type GraphNode } from '../../model/graph';
 import type { Id } from '../../model/types';
 
 export interface GraphRenderProps {
@@ -20,6 +20,8 @@ export interface GraphRenderProps {
   onUntangled?: (before: number, after: number) => void;
   /** Size multipliers from Settings → Display. */
   markerScale: number;
+  /** An active ✨ Graph Theory lens, if any. */
+  overlay: Overlay | null;
   labelScale: number;
   onNodeClick: (node: GraphNode, shift: boolean) => void;
   onLinkClick: (link: GraphLink) => void;
@@ -36,6 +38,58 @@ export function nodeRadius(n: GraphNode): number {
 /** Node val such that force-graph's internal radius (relSize·√val) matches nodeRadius. */
 export const REL_SIZE = 4;
 export const nodeVal = (n: GraphNode) => (nodeRadius(n) / REL_SIZE) ** 2;
+
+/**
+ * A graph-theory lens painted over the map. Anything not listed is dimmed;
+ * listed things can be recoloured, ringed and badged.
+ */
+export interface Overlay {
+  nodes: Map<Id, { ring?: string; badge?: string; pulse?: boolean }>;
+  /** Keyed by pairKey: every line between the two people is marked alike. */
+  links: Map<string, { color?: string; badge?: string }>;
+}
+
+export const linkPairKey = (l: GraphLink) => pairKey(endId(l.source), endId(l.target));
+
+/** The highlight set an overlay implies (people at either end of a marked line count too). */
+export function overlayHighlight(o: Overlay, links: GraphLink[]): { nodes: Set<Id>; links: Set<string> } {
+  const nodes = new Set(o.nodes.keys());
+  const ls = new Set<string>();
+  for (const l of links) {
+    if (!o.links.has(linkPairKey(l))) continue;
+    ls.add(l.id);
+    nodes.add(endId(l.source)).add(endId(l.target));
+  }
+  return { nodes, links: ls };
+}
+
+/** Which single link per marked pair carries the overlay badge (so parallel lines don't repeat it). */
+export function overlayBadges(o: Overlay | null, links: GraphLink[]): Map<string, string> {
+  const out = new Map<string, string>();
+  if (!o) return out;
+  const done = new Set<string>();
+  for (const l of links) {
+    const k = linkPairKey(l);
+    const badge = o.links.get(k)?.badge;
+    if (!badge || done.has(k)) continue;
+    done.add(k);
+    out.set(l.id, badge);
+  }
+  return out;
+}
+
+/** Hover wins, then an active lens, then the selection. */
+export function activeHighlight(
+  hoverId: Id | null,
+  overlay: Overlay | null,
+  selectedId: Id | null,
+  selectedPair: [Id, Id] | null,
+  links: GraphLink[],
+) {
+  if (hoverId) return highlightSets(hoverId, null, links);
+  if (overlay) return overlayHighlight(overlay, links);
+  return highlightSets(selectedId, selectedPair, links);
+}
 
 /**
  * Which nodes/links to emphasise. Hover wins over selection; a selected pair

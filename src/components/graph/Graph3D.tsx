@@ -5,13 +5,15 @@ import * as THREE from 'three';
 import type { GraphLink, GraphNode } from '../../model/graph';
 import type { Id } from '../../model/types';
 import {
-  highlightSets,
+  activeHighlight,
   linkAlpha,
   linkDistance,
+  linkPairKey,
   linkParticles,
   linkTooltip,
   nodeRadius,
   nodeVal,
+  overlayBadges,
   REL_SIZE,
   withAlpha,
   type GraphRenderProps,
@@ -39,6 +41,21 @@ function questionSprite(size: number, color: string): SpriteText {
   m.depthTest = false;
   q.renderOrder = 12;
   return q;
+}
+
+/** A round badge for graph-theory lenses (emoji or a couple of letters). */
+function lensSprite(text: string, size: number, color: string): SpriteText {
+  const b = new SpriteText(text, size, color);
+  b.fontFace = '"Fredoka", "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji", sans-serif';
+  b.fontWeight = '700';
+  b.backgroundColor = 'rgba(255,255,255,0.95)';
+  b.borderColor = color;
+  b.borderWidth = 0.5;
+  b.padding = [size * 0.3, size * 0.12];
+  b.borderRadius = size * 0.6;
+  (b.material as THREE.SpriteMaterial).depthTest = false;
+  b.renderOrder = 12;
+  return b;
 }
 
 /** Remember each material's resting opacity so hover-dimming can scale it. */
@@ -69,7 +86,7 @@ function makeStarfield(): THREE.Points {
 
 export default function Graph3D(props: GraphRenderProps) {
   const { nodes, links, width, height, selectedId, selectedPair, particles, labels, fitSignal } = props;
-  const { markerScale: ms, labelScale: ls } = props;
+  const { markerScale: ms, labelScale: ls, overlay } = props;
   const fg = useRef<ForceGraphMethods<GraphNode, GraphLink> | undefined>(undefined);
   const [hoverId, setHoverId] = useState<Id | null>(null);
   const fitted = useRef(false);
@@ -81,9 +98,10 @@ export default function Graph3D(props: GraphRenderProps) {
   }, [nodes]);
 
   const hl = useMemo(
-    () => highlightSets(hoverId ?? selectedId, hoverId ? null : selectedPair, links),
-    [hoverId, selectedId, selectedPair, links],
+    () => activeHighlight(hoverId, overlay, selectedId, selectedPair, links),
+    [hoverId, overlay, selectedId, selectedPair, links],
   );
+  const lensBadges = useMemo(() => overlayBadges(overlay, links), [overlay, links]);
 
   // Re-applied on data changes so a not-yet-ready first mount can't leave d3's defaults.
   useEffect(() => {
@@ -133,6 +151,21 @@ export default function Graph3D(props: GraphRenderProps) {
         group.add(ring);
       }
 
+      const lens = overlay?.nodes.get(node.id);
+      if (lens?.ring) {
+        const lensMat = new THREE.MeshBasicMaterial({ color: lens.ring, transparent: true, opacity: 0.95 });
+        track(materials, lensMat);
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 1.3, r * 0.16, 8, 40), lensMat);
+        ring.rotation.x = -Math.PI / 2.6;
+        group.add(ring);
+      }
+      if (lens?.badge) {
+        const b = lensSprite(lens.badge, r * 0.9 * ms, lens.ring ?? '#9a6bff');
+        b.position.set(-r * 0.9, r * 0.9, 0);
+        track(materials, b.material as THREE.Material);
+        group.add(b);
+      }
+
       const emoji = new SpriteText(p.emoji, r * 1.1);
       emoji.fontFace = '"Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif';
       // Drawn on top of its own sphere (otherwise it'd be hidden inside it).
@@ -170,7 +203,7 @@ export default function Graph3D(props: GraphRenderProps) {
     },
     // Rebuilt whenever the data changes, so renames / emoji / speculative show up.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [labels, nodes, ms, ls],
+    [labels, nodes, ms, ls, overlay],
   );
 
   // Dim non-highlighted nodes by tweaking material opacity in place —
@@ -186,13 +219,20 @@ export default function Graph3D(props: GraphRenderProps) {
   }, [hl, nodes]);
 
   const linkOn = (l: GraphLink) => !hl || hl.links.has(l.id);
+  const lensColor = (l: GraphLink) => overlay?.links.get(linkPairKey(l))?.color;
 
   // Midpoint badges riding the line: a heart for bold types (primary partner),
   // a "?" for anything speculative (tucked beside the heart when both).
   const buildLinkBadge = useCallback((l: GraphLink) => {
     const bold = l.type.emphasis === 'bold';
-    if (!bold && !l.speculative) return null as unknown as THREE.Object3D;
+    const lensBadge = lensBadges.get(l.id);
+    if (!bold && !l.speculative && !lensBadge) return null as unknown as THREE.Object3D;
     const group = new THREE.Group();
+    if (lensBadge) {
+      const b = lensSprite(lensBadge, 7 * ms, lensColor(l) ?? l.type.color);
+      if (bold || l.speculative) b.position.set(-8 * ms, -8 * ms, 0);
+      group.add(b);
+    }
     if (bold) {
       const badge = new SpriteText(l.type.emoji, 10 * ms);
       badge.fontFace = '"Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif';
@@ -208,7 +248,8 @@ export default function Graph3D(props: GraphRenderProps) {
       group.add(q);
     }
     return group;
-  }, [ms]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- lensColor reads overlay
+  }, [ms, lensBadges, overlay]);
 
   const placeLinkBadge = useCallback(
     // The library types `link` loosely, hence the cast.
@@ -234,12 +275,12 @@ export default function Graph3D(props: GraphRenderProps) {
       nodeVal={nodeVal}
       nodeLabel={() => ''}
       nodeThreeObject={buildNode}
-      linkColor={(l) => withAlpha(l.type.color, linkAlpha(l, linkOn(l)))}
+      linkColor={(l) => withAlpha(lensColor(l) ?? l.type.color, linkAlpha(l, linkOn(l)))}
       linkThreeObjectExtend={true}
       linkThreeObject={buildLinkBadge}
       linkPositionUpdate={placeLinkBadge}
       linkOpacity={1}
-      linkWidth={(l) => (l.width + (hl?.links.has(l.id) ? 0.8 : 0)) * 0.55}
+      linkWidth={(l) => ((lensColor(l) ? Math.max(l.width, 2.5) : l.width) + (hl?.links.has(l.id) ? 0.8 : 0)) * 0.55}
       linkCurvature={(l) => l.curvature}
       linkLabel={(l) => linkTooltip(l, nameOf)}
       // Chunky cones so direction is obvious from any angle.

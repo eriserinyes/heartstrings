@@ -4,16 +4,18 @@ import type { GraphLink, GraphNode } from '../../model/graph';
 import type { Id } from '../../model/types';
 import { uniqueEdges, untangle, type Pt } from '../../model/untangle';
 import {
+  activeHighlight,
   arrowTipParam,
   controlPoint2D,
-  highlightSets,
   linkAlpha,
   linkDistance,
   linkMidpoint2D,
+  linkPairKey,
   linkParticles,
   linkTooltip,
   nodeRadius,
   nodeVal,
+  overlayBadges,
   pointOnLink2D,
   REL_SIZE,
   viewToShow,
@@ -80,9 +82,32 @@ function drawQuestion(ctx: CanvasRenderingContext2D, x: number, y: number, r: nu
   ctx.fillText('?', x, y + r * 0.1);
 }
 
+/** A round badge holding an emoji or a couple of letters (graph-theory lenses). */
+function drawBadge(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, text: string, color: string, dark: boolean) {
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = dark ? '#2b2440' : '#ffffff';
+  ctx.fill();
+  ctx.setLineDash([]);
+  ctx.lineWidth = Math.max(1, r * 0.22);
+  ctx.strokeStyle = color;
+  ctx.stroke();
+  const emoji = /\p{Extended_Pictographic}/u.test(text);
+  ctx.font = emoji
+    ? `${r * 1.15}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`
+    : `700 ${r * (text.length > 1 ? 1.05 : 1.35)}px "Fredoka", ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, y + r * 0.08);
+}
+
+/** 0→1→0 heartbeat for pulsing lens rings. */
+const pulse = () => 0.5 + 0.5 * Math.sin(performance.now() / 260);
+
 export default function Graph2D(props: GraphRenderProps) {
   const { nodes, links, width, height, selectedId, selectedPair, particles, labels, dark, fitSignal, untangleSignal, autoUntangle } = props;
-  const { markerScale: ms, labelScale: ls } = props;
+  const { markerScale: ms, labelScale: ls, overlay } = props;
   const fg = useRef<ForceGraphMethods<GraphNode, GraphLink> | undefined>(undefined);
   const [hoverId, setHoverId] = useState<Id | null>(null);
   const fitted = useRef(false);
@@ -94,9 +119,10 @@ export default function Graph2D(props: GraphRenderProps) {
   }, [nodes]);
 
   const hl = useMemo(
-    () => highlightSets(hoverId ?? selectedId, hoverId ? null : selectedPair, links),
-    [hoverId, selectedId, selectedPair, links],
+    () => activeHighlight(hoverId, overlay, selectedId, selectedPair, links),
+    [hoverId, overlay, selectedId, selectedPair, links],
   );
+  const lensBadges = useMemo(() => overlayBadges(overlay, links), [overlay, links]);
 
   // Gentler forces than the default: friend groups need room to breathe.
   // Re-applied on every data change (not just on mount) so a mount where the
@@ -246,6 +272,16 @@ export default function Graph2D(props: GraphRenderProps) {
       ctx.stroke();
       ctx.setLineDash([]);
 
+      const lens = overlay?.nodes.get(node.id);
+      if (lens?.ring) {
+        const beat = lens.pulse ? pulse() : 0;
+        ctx.beginPath();
+        ctx.arc(x, y, r + 3.5 + beat * 2, 0, Math.PI * 2);
+        ctx.lineWidth = 3.5 + beat * 1.5;
+        ctx.strokeStyle = withAlpha(lens.ring, 0.95 - beat * 0.35);
+        ctx.stroke();
+      }
+
       if (selected) {
         ctx.beginPath();
         ctx.setLineDash([3, 2.5]);
@@ -261,11 +297,12 @@ export default function Graph2D(props: GraphRenderProps) {
       ctx.textBaseline = 'middle';
       ctx.fillText(p.emoji, x, y + r * 0.07);
       if (p.speculative) drawQuestion(ctx, x + r * 0.74, y - r * 0.74, r * 0.5 * ms, '#9a6bff', dark);
+      if (lens?.badge) drawBadge(ctx, x - r * 0.74, y - r * 0.74, r * 0.5 * ms, lens.badge, lens.ring ?? '#9a6bff', dark);
 
       // Name labels are drawn later, in the overlay pass, so arrows and badges sit beneath them.
       ctx.restore();
     },
-    [hl, selectedId, selectedPair, dark, ms],
+    [hl, overlay, selectedId, selectedPair, dark, ms],
   );
 
   /** A person's name pill. Drawn last of all so nothing covers a name. */
@@ -311,14 +348,15 @@ export default function Graph2D(props: GraphRenderProps) {
       if (cp) ctx.quadraticCurveTo(cp.x, cp.y, t.x, t.y!);
       else ctx.lineTo(t.x, t.y!);
       ctx.lineCap = 'round';
+      const color = overlay?.links.get(linkPairKey(l))?.color ?? l.type.color;
       ctx.lineWidth = l.width + 9;
-      ctx.strokeStyle = withAlpha(l.type.color, (on ? 0.28 : 0.06) * (l.speculative ? 0.5 : 1));
-      ctx.shadowColor = l.type.color;
+      ctx.strokeStyle = withAlpha(color, (on ? 0.28 : 0.06) * (l.speculative ? 0.5 : 1));
+      ctx.shadowColor = color;
       ctx.shadowBlur = on ? 14 : 0;
       ctx.stroke();
       ctx.restore();
     },
-    [hl],
+    [hl, overlay],
   );
 
   // …plus midpoint badges, drawn after everything else so they're never hidden:
@@ -378,9 +416,22 @@ export default function Graph2D(props: GraphRenderProps) {
         }
         ctx.restore();
       }
+      // Graph-theory lens badges ride the line, past the midpoint so they miss 💖/? badges.
+      for (const l of links) {
+        const badge = lensBadges.get(l.id);
+        const s = l.source as GraphNode;
+        const t = l.target as GraphNode;
+        if (!badge || typeof s !== 'object' || s.x === undefined || t.x === undefined) continue;
+        const crowded = l.type.emphasis === 'bold' || l.speculative || !l.mutual;
+        const { p } = pointOnLink2D({ x: s.x, y: s.y! }, { x: t.x, y: t.y! }, l.curvature, crowded ? 0.66 : 0.5);
+        ctx.save();
+        ctx.globalAlpha = !hl || hl.links.has(l.id) ? 1 : 0.25;
+        drawBadge(ctx, p.x, p.y, 7.5 * ms, badge, overlay?.links.get(linkPairKey(l))?.color ?? l.type.color, dark);
+        ctx.restore();
+      }
       if (labels) for (const n of nodes) drawLabel(n, ctx, scale);
     },
-    [links, nodes, hl, dark, ms, labels, drawLabel],
+    [links, nodes, hl, dark, ms, labels, drawLabel, lensBadges, overlay],
   );
 
   const paintPointer = useCallback((node: GraphNode, color: string, ctx: CanvasRenderingContext2D) => {
@@ -391,6 +442,7 @@ export default function Graph2D(props: GraphRenderProps) {
   }, []);
 
   const linkOn = (l: GraphLink) => !hl || hl.links.has(l.id);
+  const lensColor = (l: GraphLink) => overlay?.links.get(linkPairKey(l))?.color;
 
   return (
     <ForceGraph2D<GraphNode, GraphLink>
@@ -404,8 +456,9 @@ export default function Graph2D(props: GraphRenderProps) {
       nodeLabel={() => ''}
       nodeCanvasObject={drawNode}
       nodePointerAreaPaint={paintPointer}
-      linkColor={(l) => withAlpha(l.type.color, linkAlpha(l, linkOn(l)))}
-      linkWidth={(l) => (hl?.links.has(l.id) ? l.width + 1 : l.width)}
+      linkColor={(l) => withAlpha(lensColor(l) ?? l.type.color, linkAlpha(l, linkOn(l)))}
+      // Lens-recoloured lines get a minimum width so their colour reads.
+      linkWidth={(l) => (lensColor(l) ? Math.max(l.width, 2.5) : l.width) + (hl?.links.has(l.id) ? 1 : 0)}
       linkCanvasObjectMode={(l) => (l.type.emphasis === 'bold' ? 'before' : undefined)}
       linkCanvasObject={drawGlow}
       onRenderFramePost={drawBadges}

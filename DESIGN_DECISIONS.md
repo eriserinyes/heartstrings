@@ -263,6 +263,26 @@ once settled it often leaves several. So after the 2D simulation comes to rest, 
   endpoints. This is a heuristic, not an optimal solver (minimum crossings is NP-hard), so
   occasionally a crossing that a human could spot a fix for remains. Pin people to taste.
 
+## 6c. ✨ Graph Theory lenses (added 2026-10-07)
+
+A right-hand sidebar (closed by default) with four classic problems, each a *lens* over the map:
+maximum matching (💌), edge colouring (📅), bipartiteness / shortest odd cycle (🔺) and
+bridges & articulation points (🧱).
+
+- **Pure and tested.** The algorithms live in `src/model/theory.ts` on a plain simple graph
+  (parallel lines collapse to one edge, weighted by the strongest ♥). `src/components/lenses.ts` turns
+  results into an `Overlay` that both renderers paint: rings, badges, recoloured lines, everything else
+  dimmed. Hover still wins over a lens; a lens wins over the selection for dimming.
+- **Exact where cheap, honest where not.** Matching is an exact memoised search per polycule up to 20
+  people (greedy above). Edge colouring backtracks with a step budget: it tries Δ nights, then Δ+1. When
+  a fallback kicks in, the panel shows "≈" instead of claiming an optimum.
+- **Scope switch.** "Partner bonds" means the shared (non-directional) types; "every connection" counts
+  crushes and friendships too, as undirected edges.
+- **Works on what's shown.** Lenses read the built graph, so hidden types, focus and the 🔮 layer apply.
+  Nothing is stored, and closing the sidebar turns the lens off.
+- **Layout.** On desktop the sidebar is its own grid column, so the map shrinks rather than being
+  covered; on phones it overlays like the other drawers.
+
 ## 7. State, saving, undo
 
 - A plain reducer over the vault; every change triggers a **debounced (400 ms) re-encrypt + save**.

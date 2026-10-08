@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import GraphView from './components/graph/GraphView';
 import { endId } from './components/graph/shared';
+import GraphTheoryPanel from './components/GraphTheoryPanel';
+import { runLens, type LensId, type LensScope } from './components/lenses';
 import LockScreen from './components/LockScreen';
 import PairPanel from './components/PairPanel';
 import { NewPersonForm, PersonPanel } from './components/PersonPanel';
@@ -77,6 +79,10 @@ function Workspace({ api }: { api: VaultApi }) {
     [],
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // ✨ Graph Theory sidebar: starts closed; closing it switches the lens off too.
+  const [theoryOpen, setTheoryOpen] = useState(false);
+  const [lens, setLens] = useState<LensId | null>(null);
+  const [lensScope, setLensScope] = useState<LensScope>('partners');
   const [query, setQuery] = useState('');
   const dark = useDarkMode();
 
@@ -114,6 +120,8 @@ function Workspace({ api }: { api: VaultApi }) {
       }),
     [shown, hiddenTypes, prefs.mergeMutual, focus],
   );
+
+  const lensResult = useMemo(() => (lens ? runLens(lens, lensScope, graph.links) : null), [lens, lensScope, graph.links]);
 
   // Drop a selection whose person was deleted (incl. via undo) or just hidden with the 🔮 layer.
   useEffect(() => {
@@ -177,7 +185,7 @@ function Workspace({ api }: { api: VaultApi }) {
   const empty = shown.people.length === 0;
 
   return (
-    <div className={`app ${prefs.peopleOpen ? 'people-open' : ''} ${sel ? 'inspector-open' : ''}`}>
+    <div className={`app ${prefs.peopleOpen ? 'people-open' : ''} ${sel ? 'inspector-open' : ''} ${theoryOpen ? 'theory-open' : ''}`}>
       <header className="topbar">
         <div className="brand">
           <button className="icon-btn people-toggle" onClick={() => setPrefs({ peopleOpen: !prefs.peopleOpen })} title="People list">
@@ -271,6 +279,7 @@ function Workspace({ api }: { api: VaultApi }) {
           onUntangled={onUntangled}
           markerScale={prefs.markerScale}
           labelScale={prefs.labelScale}
+          overlay={lensResult?.overlay ?? null}
           onNodeClick={onNodeClick}
           onLinkClick={onLinkClick}
           onBackgroundClick={onBackgroundClick}
@@ -298,6 +307,12 @@ function Workspace({ api }: { api: VaultApi }) {
         )}
 
         {toast && <div className="toast">{toast}</div>}
+
+        {!theoryOpen && (
+          <button className="theory-tab" onClick={() => setTheoryOpen(true)}>
+            Graph Theory ✨
+          </button>
+        )}
 
         <Legend prefs={prefs} setPrefs={setPrefs} api={api} onUntangle={() => setUntangleSignal((s) => s + 1)} />
       </main>
@@ -341,6 +356,23 @@ function Workspace({ api }: { api: VaultApi }) {
             />
           )}
         </aside>
+      )}
+
+      {theoryOpen && (
+        <GraphTheoryPanel
+          onClose={() => {
+            setTheoryOpen(false);
+            setLens(null);
+          }}
+          lens={lens}
+          onLensChange={setLens}
+          scope={lensScope}
+          onScopeChange={setLensScope}
+          result={lensResult}
+          nodes={graph.nodes}
+          onSelectPerson={(id) => select({ kind: 'person', id })}
+          onSelectPair={(a, b) => select({ kind: 'pair', a, b })}
+        />
       )}
 
       {settingsOpen && <SettingsModal api={api} prefs={prefs} setPrefs={setPrefs} onClose={() => setSettingsOpen(false)} />}
