@@ -6,6 +6,8 @@ import type { GraphLink, GraphNode } from '../../model/graph';
 import type { Id } from '../../model/types';
 import {
   activeHighlight,
+  CHARGE_RANGE,
+  gravityForce,
   linkAlpha,
   linkDistance,
   linkPairKey,
@@ -15,6 +17,7 @@ import {
   nodeVal,
   overlayBadges,
   REL_SIZE,
+  separationForce,
   withAlpha,
   type GraphRenderProps,
 } from './shared';
@@ -107,8 +110,10 @@ export default function Graph3D(props: GraphRenderProps) {
   useEffect(() => {
     const g = fg.current;
     if (!g) return;
-    g.d3Force('charge')?.strength(-260);
+    g.d3Force('charge')?.strength(-260).distanceMax(CHARGE_RANGE);
     g.d3Force('link')?.distance((l: GraphLink) => linkDistance(l) * 0.8);
+    g.d3Force('gravity', gravityForce(0.04));
+    g.d3Force('separation', separationForce());
     const scene = g.scene();
     if (!scene.getObjectByName('heartstrings-stars')) scene.add(makeStarfield());
   }, [data]);

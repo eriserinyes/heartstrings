@@ -4,8 +4,9 @@ import { collapseUndirected, normaliseVault, vaultReducer } from '../state/reduc
 import { DEFAULT_TYPES, emptyVault } from './defaults';
 import { buildGraph, metamours, type GraphOptions, neighbourhood, visibleVault } from './graph';
 import { PERSON_EMOJI_GROUPS, TYPE_EMOJI_GROUPS } from './emoji';
-import { viewToShow } from '../components/graph/shared';
-import { countCrossings, countOverlaps, segmentsCross, uniqueEdges, untangle, type Pt } from './untangle';
+import { gravityForce, MIN_NODE_GAP, nodeRadius, separationForce, viewToShow } from '../components/graph/shared';
+import type { GraphNode } from './graph';
+import { countCrossings, countOverlaps, nearestDistances, segmentsCross, uniqueEdges, untangle, type Pt } from './untangle';
 import type { Person, Relationship, Vault } from './types';
 
 const person = (id: string, isMe = false): Person => ({ id, name: `P${id}`, emoji: '🐸', color: '#fff', isMe, notes: '' });
@@ -386,6 +387,61 @@ describe('untangle', () => {
     expect(r.positions.get('n0')).toEqual(pos.get('n0'));
     expect(r.positions.get('n1')).toEqual(pos.get('n1'));
     expect(r.moved.every((id) => movable.has(id))).toBe(true);
+  });
+  it("doesn't fling people out or squash them together to dodge crossings", () => {
+    let seed = 11;
+    const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const ids = Array.from({ length: 18 }, (_, i) => `n${i}`);
+    // Roughly evenly spaced grid, densely and randomly linked: many unavoidable crossings.
+    const pos = new Map(ids.map((id, i) => [id, P((i % 5) * 100 + random() * 20, Math.floor(i / 5) * 100 + random() * 20)]));
+    const pairs: [string, string][] = [];
+    for (let i = 0; i < 40; i++) pairs.push([ids[Math.floor(random() * 18)], ids[Math.floor(random() * 18)]]);
+    const edges = uniqueEdges(pairs);
+    const lengths = (m: ReadonlyMap<string, Pt>) =>
+      edges.map(([a, b]) => Math.hypot(m.get(a)!.x - m.get(b)!.x, m.get(a)!.y - m.get(b)!.y)).sort((x, y) => x - y);
+    const before = lengths(pos);
+    const r = untangle(pos, edges, new Set(ids), { maxMs: 2000, minGap: 34, random });
+    expect(r.moved.length).toBeGreaterThan(0);
+    const cap = Math.max(2.5 * before[before.length >> 1], before[before.length - 1]);
+    expect(Math.max(...lengths(r.positions))).toBeLessThanOrEqual(cap + 1e-6);
+    // Relocations keep ~the layout's own spacing, not just the 34px floor.
+    expect(Math.min(...nearestDistances(r.positions))).toBeGreaterThan(60);
+  });
+});
+
+describe('layout forces', () => {
+  const node = (id: string, x: number, y: number): GraphNode & { vx: number; vy: number } =>
+    ({ id, person: person(id), degree: 0, x, y, vx: 0, vy: 0 }) as GraphNode & { vx: number; vy: number };
+  const step = (ns: ReturnType<typeof node>[], forces: ((a: number) => void)[], ticks: number) => {
+    for (let t = 0; t < ticks; t++) {
+      for (const f of forces) f(0.5);
+      for (const n of ns) {
+        n.vx *= 0.6; // d3's velocity decay
+        n.vy *= 0.6;
+        n.x! += n.vx;
+        n.y! += n.vy;
+      }
+    }
+  };
+
+  it('pulls a far-flung loner back toward the group', () => {
+    const loner = node('a', 3000, -2000);
+    const g = gravityForce(0.04);
+    g.initialize([loner]);
+    step([loner], [g], 200);
+    expect(Math.hypot(loner.x!, loner.y!)).toBeLessThan(100);
+  });
+
+  it('pushes overlapping (even coincident) people apart to the minimum gap', () => {
+    const ns = [node('a', 0, 0), node('b', 0, 0), node('c', 5, 3)];
+    const s = separationForce();
+    s.initialize(ns);
+    step(ns, [s], 200);
+    const min = 2 * nodeRadius(ns[0]) + MIN_NODE_GAP;
+    for (let i = 0; i < ns.length; i++)
+      for (let j = i + 1; j < ns.length; j++)
+        expect(Math.hypot(ns[i].x! - ns[j].x!, ns[i].y! - ns[j].y!)).toBeGreaterThan(min - 1);
+    expect(ns.every((n) => Number.isFinite(n.x) && Math.abs(n.x!) < 200)).toBe(true);
   });
 });
 

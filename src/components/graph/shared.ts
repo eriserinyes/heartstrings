@@ -39,6 +39,68 @@ export function nodeRadius(n: GraphNode): number {
 export const REL_SIZE = 4;
 export const nodeVal = (n: GraphNode) => (nodeRadius(n) / REL_SIZE) ** 2;
 
+// ---- Layout forces ----------------------------------------------------------
+// d3's charge alone pushes people with no links (or a pair who only know each
+// other) further out on every reheat, without limit. A weak pull toward the
+// origin plus a capped charge range keeps them near the group, and a
+// collision floor stops the pull from squashing anyone together.
+
+/** Charge reaches this far (px); beyond it nobody pushes anybody. */
+export const CHARGE_RANGE = 400;
+/** Gap kept between the edges of any two people's dots. */
+export const MIN_NODE_GAP = 28;
+
+type ForceNode = GraphNode & { vz?: number };
+type CustomForce = ((alpha: number) => void) & { initialize: (nodes: ForceNode[]) => void };
+
+/** Pull every node gently toward the origin (spring strength `k`, scaled by alpha). */
+export function gravityForce(k: number): CustomForce {
+  let nodes: ForceNode[] = [];
+  const force = (alpha: number) => {
+    for (const n of nodes) {
+      n.vx = (n.vx ?? 0) - (n.x ?? 0) * k * alpha;
+      n.vy = (n.vy ?? 0) - (n.y ?? 0) * k * alpha;
+      if (n.z !== undefined) n.vz = (n.vz ?? 0) - n.z * k * alpha;
+    }
+  };
+  force.initialize = (ns: ForceNode[]) => void (nodes = ns);
+  return force;
+}
+
+/** Keep node centres at least r₁ + r₂ + gap apart (O(n²), fine at friend-group scale). */
+export function separationForce(gap = MIN_NODE_GAP): CustomForce {
+  let nodes: ForceNode[] = [];
+  const force = () => {
+    for (let i = 0; i < nodes.length; i++) {
+      const a = nodes[i];
+      for (let j = i + 1; j < nodes.length; j++) {
+        const b = nodes[j];
+        const dx = (b.x ?? 0) + (b.vx ?? 0) - (a.x ?? 0) - (a.vx ?? 0);
+        const dy = (b.y ?? 0) + (b.vy ?? 0) - (a.y ?? 0) - (a.vy ?? 0);
+        const dz = a.z !== undefined && b.z !== undefined ? b.z + (b.vz ?? 0) - a.z - (a.vz ?? 0) : 0;
+        const min = nodeRadius(a) + nodeRadius(b) + gap;
+        const d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 >= min * min) continue;
+        // Split the overlap evenly (softened so it settles rather than jitters).
+        // Exactly coincident nodes get a fixed sideways nudge instead of a 1/0 launch.
+        const d = Math.sqrt(d2);
+        const push = d ? ((min - d) / d) * 0.35 : 0;
+        const [ux, uy, uz] = d ? [dx * push, dy * push, dz * push] : [min * 0.35, 0, 0];
+        a.vx = (a.vx ?? 0) - ux;
+        a.vy = (a.vy ?? 0) - uy;
+        b.vx = (b.vx ?? 0) + ux;
+        b.vy = (b.vy ?? 0) + uy;
+        if (uz) {
+          a.vz = (a.vz ?? 0) - uz;
+          b.vz = (b.vz ?? 0) + uz;
+        }
+      }
+    }
+  };
+  force.initialize = (ns: ForceNode[]) => void (nodes = ns);
+  return force;
+}
+
 /**
  * A graph-theory lens painted over the map. Anything not listed is dimmed;
  * listed things can be recoloured, ringed and badged.

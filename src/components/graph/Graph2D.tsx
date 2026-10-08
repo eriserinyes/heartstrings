@@ -6,7 +6,9 @@ import { uniqueEdges, untangle, type Pt } from '../../model/untangle';
 import {
   activeHighlight,
   arrowTipParam,
+  CHARGE_RANGE,
   controlPoint2D,
+  gravityForce,
   linkAlpha,
   linkDistance,
   linkMidpoint2D,
@@ -18,6 +20,7 @@ import {
   overlayBadges,
   pointOnLink2D,
   REL_SIZE,
+  separationForce,
   viewToShow,
   withAlpha,
   type GraphRenderProps,
@@ -128,8 +131,12 @@ export default function Graph2D(props: GraphRenderProps) {
   // Re-applied on every data change (not just on mount) so a mount where the
   // graph wasn't ready yet can't leave d3's cramped defaults in place.
   useEffect(() => {
-    fg.current?.d3Force('charge')?.strength(-300);
-    fg.current?.d3Force('link')?.distance(linkDistance);
+    const g = fg.current;
+    if (!g) return;
+    g.d3Force('charge')?.strength(-300).distanceMax(CHARGE_RANGE);
+    g.d3Force('link')?.distance(linkDistance);
+    g.d3Force('gravity', gravityForce(0.04));
+    g.d3Force('separation', separationForce());
   }, [data]);
 
   useEffect(() => {
