@@ -333,6 +333,14 @@ two letters. A test checks that each palette has no duplicates and every entry i
   were applied once on mount. If the graph wasn't ready at that instant, they silently didn't
   apply, and d3's cramped defaults left everyone overlapping. That's also what made "fit" zoom
   in absurdly far: it was fitting a pile. The forces are now re-applied on every data change.
+- **Fixed people being flung far from the group.** Once the stronger repulsion actually
+  applied, anyone with no links (or a pair who only know each other) got pushed further out on
+  every reheat, with nothing pulling them back: 5–8× the group's radius after a few edits.
+  Now: a weak pull toward the centre (`gravityForce`), repulsion capped at 400px, and a
+  collision floor (`separationForce`, dot edges ≥ 28px apart) so the pull can't squash anyone.
+  Untangling got matching limits: relocated people keep roughly the layout's own spacing, and
+  no move may stretch a line past 2.5× the median line length. When crossings are
+  unavoidable, it leaves them rather than throwing someone to the edge to dodge one.
 
 ## 11. Ideas for v2 (not built)
 
@@ -344,6 +352,6 @@ two letters. A test checks that each palette has no duplicates and every entry i
 - **Image export** of the current view (PNG), with optional name redaction.
 - **Passphrase strength meter**; optional WebAuthn/passkey unlock on supported devices.
 - **Sync** between devices via an end-to-end encrypted file in your own cloud drive.
-- **Collision force** so big nodes never overlap; better label de-cluttering in dense graphs.
+- Better label de-cluttering in dense graphs.
 - Fix the remaining oxlint warnings (latest-value refs assigned during render; deliberate, but
   could move to `useEffectEvent` once it's stable).

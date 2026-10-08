@@ -9,6 +9,10 @@
  * shortening the total line length (so ties drift toward tidier layouts and
  * the search can't cycle). A line running straight through a third person
  * counts as a conflict too, since it reads just as badly as a crossing.
+ * Moves must also keep the layout readable: relocated people keep roughly the
+ * spacing the layout already had (no squashing), and no move may stretch a
+ * line far past the typical line length (no flinging someone to the edge to
+ * dodge a crossing that can't be avoided anyway).
  * Pinned nodes never move. Links are treated as straight segments between
  * their endpoints; parallel links collapse to one.
  */
@@ -82,11 +86,36 @@ export function countOverlaps(pos: ReadonlyMap<Id, Pt>, edges: readonly Edge[], 
   return n;
 }
 
+/** [conflicts, total length, longest line] around a set of nodes. */
+type Score = [number, number, number];
+
+function median(xs: number[]): number {
+  if (!xs.length) return 0;
+  const s = [...xs].sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+/** Each point's distance to its nearest other point. */
+export function nearestDistances(pos: ReadonlyMap<Id, Pt>): number[] {
+  const ps = [...pos.values()];
+  return ps.map((p, i) => {
+    let best = Infinity;
+    for (let j = 0; j < ps.length; j++) if (j !== i) best = Math.min(best, Math.hypot(p.x - ps[j].x, p.y - ps[j].y));
+    return best;
+  }).filter(Number.isFinite);
+}
+
 export interface UntangleOptions {
   /** Wall-clock budget; the search stops early when it runs out. */
   maxMs?: number;
-  /** Relocated nodes must stay at least this far from every other node. */
+  /**
+   * Relocated nodes must stay at least this far from every other node. The
+   * effective gap grows to match the layout's own spacing when that's looser.
+   */
   minGap?: number;
+  /** No line may end up longer than this many times the median line length (unless it already was). */
+  maxStretch?: number;
   /** Deterministic randomness for tests. */
   random?: () => number;
 }
@@ -107,7 +136,7 @@ export function untangle(
   start: ReadonlyMap<Id, Pt>,
   edges: readonly Edge[],
   movable: ReadonlySet<Id>,
-  { maxMs = 120, minGap = 30, random = Math.random }: UntangleOptions = {},
+  { maxMs = 120, minGap = 30, maxStretch = 2.5, random = Math.random }: UntangleOptions = {},
 ): UntangleResult {
   const pos = new Map<Id, Pt>([...start].map(([id, p]) => [id, { x: p.x, y: p.y }]));
   const clearance = minGap / 2;
@@ -117,10 +146,17 @@ export function untangle(
   const incident = new Map<Id, Edge[]>();
   for (const e of edges) for (const v of e) (incident.get(v) ?? incident.set(v, []).get(v)!).push(e);
   const edgeIndex = new Map(edges.map((e, i) => [e, i]));
+  const len = (e: Edge) => {
+    const a = pos.get(e[0])!;
+    const b = pos.get(e[1])!;
+    return Math.hypot(a.x - b.x, a.y - b.y);
+  };
+  const maxLen = maxStretch * median(edges.map(len));
+  const spacing = Math.max(minGap, 0.75 * median(nearestDistances(pos)));
 
   // Conflicts and length touching a set of nodes — enough to score a local
   // move exactly, since nothing outside this set changes.
-  const localScore = (touched: Id[]): [number, number] => {
+  const localScore = (touched: Id[]): Score => {
     const mine = new Set<Edge>();
     for (const v of touched) for (const e of incident.get(v) ?? []) mine.add(e);
     const touchedSet = new Set(touched);
@@ -139,10 +175,13 @@ export function untangle(
       }
     }
     let length = 0;
+    let longest = 0;
     for (const e of mine) {
       const a = pos.get(e[0])!;
       const b = pos.get(e[1])!;
-      length += Math.hypot(a.x - b.x, a.y - b.y);
+      const l = len(e);
+      length += l;
+      longest = Math.max(longest, l);
       for (const f of edges) {
         if (f === e || shares(e, f)) continue;
         // Count a pair inside `mine` once, from its earlier member.
@@ -150,12 +189,13 @@ export function untangle(
         if (segmentsCross(a, b, pos.get(f[0])!, pos.get(f[1])!)) crossings++;
       }
     }
-    return [crossings, length];
+    return [crossings, length, longest];
   };
-  const better = ([c1, l1]: [number, number], [c0, l0]: [number, number]) => c1 < c0 || (c1 === c0 && l1 < l0 * 0.97);
+  const better = ([c1, l1, m1]: Score, [c0, l0, m0]: Score) =>
+    m1 <= Math.max(maxLen, m0) && (c1 < c0 || (c1 === c0 && l1 < l0 * 0.97));
 
   const free = (id: Id, p: Pt) => {
-    for (const [o, q] of pos) if (o !== id && Math.hypot(q.x - p.x, q.y - p.y) < minGap) return false;
+    for (const [o, q] of pos) if (o !== id && Math.hypot(q.x - p.x, q.y - p.y) < spacing) return false;
     return true;
   };
 
@@ -197,7 +237,7 @@ export function untangle(
       let best: Pt | null = null;
       let bestScore = s0;
       const phase = random() * Math.PI * 2;
-      for (const r of [minGap, minGap * 2, minGap * 3.5]) {
+      for (const r of [spacing, spacing * 1.6, spacing * 2.4]) {
         for (let k = 0; k < 8; k++) {
           const a = phase + (k * Math.PI) / 4;
           const p = { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
